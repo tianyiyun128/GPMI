@@ -9,7 +9,8 @@ from typing import Iterable, List, Optional, Tuple
 
 import core.path_manager as Paths
 
-GPMI_VERSION = "0.3.0"
+GPMI_VERSION = "0.3.1"
+REQUIRED_REPLACEMENT_SLOTS = ("Unit", "Unit_H")
 
 
 @dataclass
@@ -96,6 +97,15 @@ def infer_rule_identity(note: str, replacement: str = "") -> Tuple[str, str, str
         sanitize_identifier(outfit, "default"),
         sanitize_identifier(slot, "Unit"),
     )
+
+
+def _replacement_path(importer_path: Optional[Path], replacement: str) -> Optional[Path]:
+    if importer_path is None or not replacement:
+        return None
+    path = Path(replacement)
+    if path.is_absolute():
+        return path
+    return importer_path / path
 
 
 def _rule_from_dict(data: dict) -> PortraitRule:
@@ -234,6 +244,28 @@ def ensure_character_library(db: HashDb) -> HashDb:
     return db
 
 
+def validate_outfit_ready(importer_path: Optional[Path], outfit: CharacterOutfit) -> Tuple[bool, List[str]]:
+    """Return whether an outfit can be written into runtime rules.
+
+    Replacement is allowed only when both required slots exist in the hash DB
+    and, when a profile path is known, both replacement files exist locally.
+    """
+    issues: List[str] = []
+    by_slot = {rule.slot: rule for rule in outfit.rules if rule.enabled and rule.hash and rule.replacement}
+
+    for slot in REQUIRED_REPLACEMENT_SLOTS:
+        rule = by_slot.get(slot)
+        if rule is None:
+            issues.append(f"missing {slot} hash/replacement rule")
+            continue
+        if importer_path is not None:
+            path = _replacement_path(importer_path, rule.replacement)
+            if path is None or not path.is_file():
+                issues.append(f"missing {slot} replacement file: {rule.replacement}")
+
+    return not issues, issues
+
+
 def _runtime_rule(character: CharacterProfile, outfit: CharacterOutfit, rule: PortraitRule) -> PortraitRule:
     return PortraitRule(
         enabled=rule.enabled,
@@ -246,11 +278,19 @@ def _runtime_rule(character: CharacterProfile, outfit: CharacterOutfit, rule: Po
     )
 
 
-def rebuild_runtime_rules(db: HashDb) -> List[PortraitRule]:
+def rebuild_runtime_rules(db: HashDb, importer_path: Optional[Path] = None) -> List[PortraitRule]:
     ensure_character_library(db)
     if not db.characters:
-        db.rules = [_rule_from_dict(asdict(rule)) for rule in db.rules]
-        return db.rules
+        legacy_rules = [_rule_from_dict(asdict(rule)) for rule in db.rules]
+        grouped = HashDb(
+            enabled=db.enabled,
+            dump_unknown=db.dump_unknown,
+            min_width=db.min_width,
+            min_height=db.min_height,
+            rules=legacy_rules,
+        )
+        ensure_character_library(grouped)
+        db.characters = grouped.characters
 
     runtime_rules: List[PortraitRule] = []
     for character in db.characters:
@@ -260,8 +300,12 @@ def rebuild_runtime_rules(db: HashDb) -> List[PortraitRule]:
             character.selected_outfit_id = outfit.id
         if outfit is None:
             continue
+        ready, _ = validate_outfit_ready(importer_path, outfit)
+        if not ready:
+            continue
         for rule in outfit.rules:
-            runtime_rules.append(_runtime_rule(character, outfit, rule))
+            if rule.enabled and rule.hash and rule.replacement:
+                runtime_rules.append(_runtime_rule(character, outfit, rule))
     db.rules = runtime_rules
     return runtime_rules
 
@@ -279,14 +323,14 @@ def load_hash_db(path: Path) -> HashDb:
         characters=[_character_from_dict(item) for item in data.get("characters", [])],
     )
     ensure_character_library(db)
-    rebuild_runtime_rules(db)
+    rebuild_runtime_rules(db, path.parent)
     return db
 
 
 def save_hash_db(path: Path, db: HashDb) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     ensure_character_library(db)
-    rebuild_runtime_rules(db)
+    rebuild_runtime_rules(db, path.parent)
     payload = asdict(db)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -380,6 +424,9 @@ def select_outfit(importer_path: Path, character_id: str, outfit_id: str) -> Has
     outfit = get_outfit(character, outfit_id)
     if outfit is None:
         raise ValueError(f"unknown outfit for {character.id}: {outfit_id}")
+    ready, issues = validate_outfit_ready(importer_path, outfit)
+    if not ready:
+        raise ValueError("outfit is incomplete; " + "; ".join(issues))
     character.selected_outfit_id = outfit.id
     save_hash_db(db_path, db)
     write_runtime_ini(importer_path, db)
@@ -409,8 +456,6 @@ def add_or_update_rule(
 
     character = ensure_character(db, character_id, character_id)
     outfit = ensure_outfit(character, outfit_id, "Default" if outfit_id == "default" else outfit_id)
-    if select_after_update:
-        character.selected_outfit_id = outfit.id
 
     for rule in outfit.rules:
         if normalize_hash(rule.hash) == norm_hash and rule.slot == slot:
@@ -420,20 +465,24 @@ def add_or_update_rule(
             rule.character_id = character.id
             rule.outfit_id = outfit.id
             rule.slot = slot
-            save_hash_db(db_path, db)
-            write_runtime_ini(importer_path, db)
-            return rule
+            break
+    else:
+        rule = PortraitRule(
+            enabled=enabled,
+            hash=norm_hash,
+            replacement=rel,
+            note=rule_note,
+            character_id=character.id,
+            outfit_id=outfit.id,
+            slot=slot,
+        )
+        outfit.rules.append(rule)
 
-    rule = PortraitRule(
-        enabled=enabled,
-        hash=norm_hash,
-        replacement=rel,
-        note=rule_note,
-        character_id=character.id,
-        outfit_id=outfit.id,
-        slot=slot,
-    )
-    outfit.rules.append(rule)
+    if select_after_update:
+        ready, _ = validate_outfit_ready(importer_path, outfit)
+        if ready:
+            character.selected_outfit_id = outfit.id
+
     save_hash_db(db_path, db)
     write_runtime_ini(importer_path, db)
     return rule
