@@ -1,0 +1,282 @@
+import logging
+import time
+import psutil
+import subprocess
+import win32api
+
+import ctypes as ct
+import ctypes.wintypes as wt
+
+from typing import List, Optional
+from pathlib import Path
+from enum import Enum
+
+from core.locale_manager import L, LocaleString
+
+
+log = logging.getLogger(__name__)
+
+
+class DllInjector:
+    def __init__(self, injector_lib_path, load_hook=False, load_inject=False):
+        self.lib = None
+        self.dll_path = None
+        self.target_process = None
+        self.hook = None
+        self.mutex = None
+
+        self.load(Path(injector_lib_path).resolve(), load_hook, load_inject)
+
+    @staticmethod
+    def get_short_path(path: Path) -> str:
+        try:
+            full_path = str(path.resolve())
+            return win32api.GetShortPathName(full_path)
+        except Exception as e:
+            return str(path.resolve())
+
+    def load(self, injector_lib_path, load_hook=False, load_inject=False):
+        if not injector_lib_path.exists():
+            raise ValueError(L('error_dll_injector_file_not_found', 'Injector file not found: {injector_lib_path}!').format(path=injector_lib_path))
+
+        try:
+            self.lib = ct.cdll.LoadLibrary(str(injector_lib_path))
+        except Exception as e:
+            raise ValueError(L('error_dll_injector_load_failed', 'Failed to load injector library!')) from e
+
+        try:
+            if load_hook:
+                self.lib.HookLibrary.argtypes = (wt.LPCWSTR, ct.POINTER(wt.HHOOK), ct.POINTER(wt.HANDLE))
+                self.lib.HookLibrary.restype = ct.c_int
+
+                self.lib.WaitForInjection.argtypes = (wt.LPCWSTR, wt.LPCWSTR, ct.c_int)
+                self.lib.WaitForInjection.restype = ct.c_int
+
+                self.lib.UnhookLibrary.argtypes = (ct.POINTER(wt.HHOOK), ct.POINTER(wt.HANDLE))
+                self.lib.UnhookLibrary.restype = ct.c_int
+
+            if load_inject:
+                try:
+                    self.lib.Inject.argtypes = (wt.DWORD, wt.LPCWSTR, ct.c_int)
+                    self.lib.Inject.restype = ct.c_int
+                except AttributeError as e:
+                    raise Exception(L('error_old_3dmloader', """
+                        Provided **3dmloader.dll** is too old, it's missing **Inject** method.
+                        
+                        Please put **3dmloader.dll** from **v0.7.5+** to `Packages/XXMI` or use **Hook** method (without **Inject Libraries**).
+                    """)) from e
+
+        except Exception as e:
+            try:
+                self.unload()
+            except Exception:
+                pass
+            raise ValueError(L('error_dll_injector_setup_failed', """
+                Failed to setup injector library!
+
+                Error: {error_text}
+            """).format(
+                error_text=str(e)
+            ))
+
+    def unload(self):
+        # Define FreeLibrary arg1 type as HMODULE handle (C void * pointer)
+        # By default, handle's Python int will be converted to C long and then raise OverflowError when cast as C int
+        kernel32 = ct.WinDLL('kernel32', use_last_error=True)
+        kernel32.FreeLibrary.argtypes = [wt.HMODULE]
+        # Explicitly unload injector dll
+        result = kernel32.FreeLibrary(self.lib._handle)
+        if result == 0:
+            raise ValueError(L('error_dll_injector_unload_failed', 'Failed to unload injector library!'))
+
+    def start_process(self, exe_path: str, work_dir: Optional[str] = None, start_args: str = ''):
+        if work_dir is None:
+            work_dir = ''
+
+        result = self.lib.StartProcess(
+            wt.LPCWSTR(exe_path),
+            wt.LPCWSTR(work_dir),
+            wt.LPCWSTR(start_args)
+        )
+
+        if result != 0:
+            codes = {
+                0:	L('dll_injector_shell_error_out_of_memory', 'The operating system is out of memory/resources'),
+                2:	L('dll_injector_shell_error_file_not_found', 'File not found'),
+                3:	L('dll_injector_shell_error_path_not_found', 'Path not found'),
+                5:	L('dll_injector_shell_error_access_denied', 'Access denied'),
+                11:	L('dll_injector_shell_error_not_win32_app', '.exe file is invalid or not a Win32 app'),
+                26:	L('dll_injector_shell_error_sharing_violation', 'Sharing violation'),
+                31:	L('dll_injector_shell_error_no_app_association', 'No application is associated with the file'),
+                32:	L('dll_injector_shell_error_incomplete_app_association', 'File association is incomplete'),
+            }
+            error_text = codes.get(result, L('dll_injector_unknown_shell_error_code', 'Unknown ShellExecute error code {error_code}').format(error_code=result))
+            raise ValueError(L('error_dll_injector_process_start_failed', 'Failed to start {process_name}: {error_text}!').format(process_name=exe_path.name, error_text=error_text))
+
+    def open_process(self,
+                     start_method: str,
+                     exe_path: Optional[str],
+                     work_dir: Optional[str],
+                     start_args: Optional[List[str]],
+                     process_flags: Optional[int],
+                     process_name: Optional[str] = None,
+                     dll_paths: Optional[List[Path]] = None,
+                     cmd: Optional[str] = None,
+                     inject_timeout: int = 15):
+
+        log.debug(f'Starting game process {process_name} using {start_method} method: exe_path={exe_path}, work_dir={work_dir}, start_args={start_args}, process_flags={process_flags}, cmd={cmd}, dll_paths={dll_paths}')
+
+        start_method = start_method.upper()
+
+        if start_method == 'NATIVE':
+            if cmd is None:
+                cmd = [exe_path] + start_args
+                use_shell = False
+            else:
+                use_shell = True
+            subprocess.Popen(cmd, creationflags=process_flags, cwd=work_dir, shell=use_shell)
+
+        elif start_method == 'SHELL':
+            if cmd is None:
+                self.start_process(exe_path, work_dir, ' '.join(start_args))
+            else:
+                # cmd = ' '.join([f'start \"\" \"{exe_path}\"'] + start_args)
+                self.start_process('cmd.exe', None, f'/C "{cmd}"')
+
+        elif start_method == 'MANUAL':
+            log.debug(f'Waiting for user to start the game process {process_name}...')
+
+        else:
+            raise ValueError(L('error_dll_injector_unknown_start_method', 'Unknown process start method `{start_method}`!').format(start_method=start_method))
+
+        if dll_paths:
+            pid = self.inject_libraries(dll_paths, process_name, timeout=inject_timeout)
+            if pid == -1:
+                raise ValueError(L('error_dll_injector_injection_failed', 'Failed to inject {dll_paths}!').format(dll_paths=str(dll_paths)))
+
+
+    def hook_library(self, dll_path: Path, target_process: str):
+        if self.hook is not None:
+            dll_path = self.dll_path
+            self.unhook_library()
+            raise ValueError(L('error_dll_injector_unhook_failed', 'Invalid injector usage: {dll_path} was not unhooked!').format(dll_path=str(dll_path)))
+
+        self.dll_path = wt.LPCWSTR(str(dll_path.resolve()))
+        self.target_process = wt.LPCWSTR(target_process)
+        self.hook = wt.HHOOK()
+        self.mutex = wt.HANDLE()
+
+        result = self.lib.HookLibrary(self.dll_path, ct.byref(self.hook), ct.byref(self.mutex))
+
+        if result == 100:
+            raise ValueError(L('error_dll_injector_another_instance', 'Another instance of 3DMigotoLoader is running!'))
+        elif result == 200:
+            raise ValueError(L('error_dll_injector_failed_to_load_dll', 'Failed to load {dll_path}!').format(dll_path=str(dll_path)))
+        elif result == 300:
+            raise ValueError(L('error_dll_injector_missing_entry_point', 'Library {dll_path} is missing expected entry point!').format(dll_path=str(dll_path)))
+        elif result == 400:
+            raise ValueError(L('error_dll_injector_hook_setup_failed', 'Failed to setup windows hook for {dll_path}!').format(dll_path=str(dll_path)))
+        elif result != 0:
+            raise ValueError(L('error_dll_injector_unknown_hook_error', 'Unknown error while hooking {dll_path}!').format(dll_path=str(dll_path)))
+        if not bool(self.hook):
+            raise ValueError(L('error_dll_injector_hook_is_null', 'Hook is NULL for {dll_path}!').format(dll_path=str(dll_path)))
+
+    def wait_for_injection(self, timeout: int = 15) -> bool:
+        if self.dll_path is None:
+            raise ValueError(L('error_dll_injector_path_not_defined', 'Invalid injector usage: dll path is not defined!'))
+        if self.target_process is None:
+            raise ValueError(L('error_dll_injector_process_not_defined', 'Invalid injector usage: target process is not defined!'))
+        if self.hook is None:
+            raise ValueError(L('error_dll_injector_dll_not_hooked', 'Invalid injector usage: dll is not hooked!'))
+
+        result = self.lib.WaitForInjection(self.dll_path, self.target_process, ct.c_int(timeout))
+
+        if result != 0:
+            return False
+        return True
+
+    def unhook_library(self) -> bool:
+        if self.hook is None and self.mutex is None:
+            return True
+        result = self.lib.UnhookLibrary(ct.byref(self.hook), ct.byref(self.mutex))
+        self.dll_path = None
+        self.target_process = None
+        self.hook = None
+        self.mutex = None
+        if result != 0:
+            return False
+        return True
+
+    class ErrorMixin:
+        UNKNOWN_ERROR_CODE = (-1, L('error_unknown_error_code', 'Unknown error code {error_code}'))
+
+        def __init__(self, code: int, message: LocaleString):
+            self.code = code
+            self._message = message
+
+        def msg(self) -> LocaleString:
+            return self._message
+
+        def format(self, **kwargs) -> LocaleString:
+            return self._message.format(**kwargs)
+
+        @classmethod
+        def from_code(cls, code: int):
+            """Get enum member by numeric code, fallback to UNKNOWN_ERROR_CODE."""
+            for member in cls:
+                if member.code == code:
+                    return member
+            return cls.UNKNOWN_ERROR_CODE
+
+    class InjectError(ErrorMixin, Enum):
+        PROCESS_NOT_FOUND = (100, L('error_dll_inject_process_not_found', 'Process {pid} not found'))
+        INVALID_DLL_PATH = (110, L('error_dll_inject_invalid_dll_path', 'Invalid DLL path {dll_path}'))
+        KERNEL32_FAIL = (120, L('error_dll_inject_kernel32_fail', 'Failed to resolve kernel32.dll'))
+        LOADLIBRARY_FAIL = (130, L('error_dll_inject_loadlibrary_fail', 'Failed to resolve LoadLibraryW'))
+        REMOTE_ALLOC_FAIL = (200, L('error_dll_inject_remote_alloc_fail', 'Failed to allocate remote memory'))
+        WRITE_MEMORY_FAIL = (300, L('error_dll_inject_write_memory_fail', 'Failed to write DLL path to process memory'))
+        THREAD_FAIL = (400, L('error_dll_inject_thread_fail', 'Failed to create remote thread'))
+        THREAD_TIMEOUT = (500, L('error_dll_inject_thread_timeout', 'Injection thread timed out'))
+        THREAD_WAIT_FAIL = (510, L('error_dll_inject_thread_wait_fail', 'Injection thread wait failed'))
+        INJECTION_FAILED = (600, L('error_dll_inject_injection_failed', 'DLL injection failed'))
+        UNKNOWN_ERROR = (700, L('error_dll_inject_unknown_error', 'Unknown low level error'))
+
+    def inject_libraries(self, dll_paths: List[Path], process_name: str = None, pid: int = None, timeout: int = 15):
+
+        time_start = time.time()
+
+        while True:
+
+            current_time = time.time()
+
+            if timeout != -1 and current_time - time_start >= timeout:
+                # Timeout reached, lets signal it with -1 return pid
+                return -1
+
+            for process in psutil.process_iter():
+                try:
+                    if process.name() == process_name or process.pid == pid:
+                        for dll_path in dll_paths:
+                            wide_dll_path = wt.LPCWSTR(str(dll_path.resolve()))
+                            result = self.lib.Inject(process.pid, wide_dll_path, ct.c_int(timeout))
+                            if result != 0:
+                                inject_error = DllInjector.InjectError.from_code(result)
+                                error_text = inject_error.format(pid=process.pid, dll_path=dll_path, error_code=result)
+                                if dll_path.name == 'd3d11.dll' and len(dll_paths) == 1:
+                                    raise ValueError(L('error_dll_injector_failed', """
+                                        Failed to inject {dll_path}:
+                                        {error_text}!
+                                    """).format(dll_path=dll_path, error_text=error_text))
+                                else:
+                                    raise ValueError(L('error_dll_injector_extra_library_failed', """
+                                        Failed to inject extra library {dll_path}:
+                                        {error_text}!
+                                        Please check Advanced Settings → Inject Libraries.
+                                    """).format(dll_path=dll_path, error_text=error_text))
+                            else:
+                                log.debug(f'Successfully injected DLL to process {process.name()} (PID: {process.pid}): {dll_path}')
+                        return process.pid
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+
+            time.sleep(0.1)

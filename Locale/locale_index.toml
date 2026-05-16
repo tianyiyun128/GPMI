@@ -1,0 +1,29 @@
+[EN]
+display_name = "English"
+keywords = ["en_US", "English", "USA"]
+codepage = "1252"
+
+[CN]
+display_name = "中文"
+keywords = ["zh_CN", "Chinese", "China"]
+codepage = "936"
+
+[ES_MX]
+display_name = "Español"
+keywords = ["es_MX", "Spanish", "Latinoamérica"]
+codepage = "1252"
+
+[KR]
+display_name = "한국어"
+keywords = ["ko_KR", "Korean", "Korea"]
+codepage = "949"
+
+[RU]
+display_name = "Русский"
+keywords = ["ru_RU", "Russian", "Russia"]
+codepage = "1251"
+
+[PL]
+display_name = "Polski"
+keywords = ["pl_PL", "Polish", "Poland"]
+codepage = "1250"
