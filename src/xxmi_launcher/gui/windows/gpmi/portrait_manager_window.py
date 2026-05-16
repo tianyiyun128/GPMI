@@ -1,145 +1,233 @@
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
-from tkinter import filedialog, simpledialog, messagebox
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
 import core.config_manager as Config
-import core.event_manager as Events
-import core.path_manager as Paths
 
-from core.gpmi.profile import (
-    add_or_update_rule,
-    ensure_profile,
-    import_replacement_texture,
-    load_hash_db,
-    normalize_hash,
-    remove_rules,
-    save_hash_db,
+from core.gpmi.mods import (
+    HASH_DB_FILE,
+    META_FILE,
+    REQUIRED_SLOTS,
+    RUNTIME_MODS_DIR,
+    USER_MODS_DIR,
+    build_runtime_hash_db,
+    clear_selected_outfit,
+    ensure_game_profile,
+    game_profile_dir,
+    import_all_ready_mods,
+    import_user_mod,
+    load_mod_meta,
+    scan_user_mods,
+    select_imported_outfit,
+    summarize_hash_db,
     write_runtime_ini,
 )
-from core.gpmi.ptrtex import ptrtex_info, ptrtex_to_image, ptrtex_to_png
 
 
 class PortraitManagerWindow(ctk.CTkToplevel):
     def __init__(self, master):
         super().__init__(master)
         self.title('GPMI Portrait Manager')
-        self.geometry('1080x680')
-        self.minsize(980, 600)
+        self.geometry('1180x760')
+        self.minsize(1080, 680)
         self.transient(master)
 
-        self.importer_path = Config.Importers.GPMI.Importer.importer_path
-        ensure_profile(self.importer_path)
+        self.game_exe_path = self._configured_game_exe_path()
+        self.profile_dir = game_profile_dir(self.game_exe_path) if self.game_exe_path else None
+        if self.profile_dir is not None:
+            ensure_game_profile(self.profile_dir)
+
+        self.scanned_mods: list[dict] = []
+        self.selected_character_id: str | None = None
+        self.character_rows: list[str] = []
+        self.outfit_rows: list[tuple[str, dict]] = []
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
-        self.header = ctk.CTkFrame(self, corner_radius=16)
-        self.header.grid(row=0, column=0, sticky='ew', padx=16, pady=(16, 8))
-        self.header.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(self.header, text='GPMI', font=ctk.CTkFont(size=28, weight='bold')).grid(row=0, column=0, rowspan=2, padx=18, pady=14)
-        self.path_label = ctk.CTkLabel(self.header, text=str(self.importer_path), anchor='w')
-        self.path_label.grid(row=0, column=1, sticky='ew', padx=10, pady=(16, 2))
-        ctk.CTkLabel(self.header, text='Hash-based Godot portrait replacement profile', anchor='w').grid(row=1, column=1, sticky='ew', padx=10, pady=(0, 14))
-        ctk.CTkButton(self.header, text='Open Profile', width=120, command=self.open_profile).grid(row=2, column=2, padx=(8, 16), pady=(14, 2))
-        ctk.CTkButton(self.header, text='Open Dumps', width=120, command=self.open_dumps).grid(row=2, column=2, padx=(8, 16), pady=(2, 14))
-
+        self._build_header()
         self.tabs = ctk.CTkTabview(self, corner_radius=16)
         self.tabs.grid(row=1, column=0, sticky='nsew', padx=16, pady=(8, 16))
-        self.rules_tab = self.tabs.add('Rules')
-        self.import_tab = self.tabs.add('Import Texture')
-        self.dumps_tab = self.tabs.add('Dumps')
+
+        self.setup_tab = self.tabs.add('Setup')
+        self.mods_tab = self.tabs.add('Import Mods')
+        self.outfits_tab = self.tabs.add('Outfits')
         self.runtime_tab = self.tabs.add('Runtime')
 
-        self._build_rules_tab()
-        self._build_import_tab()
-        self._build_dumps_tab()
+        self._build_setup_tab()
+        self._build_mods_tab()
+        self._build_outfits_tab()
         self._build_runtime_tab()
         self.refresh_all()
 
-    def _build_rules_tab(self):
-        self.rules_tab.grid_columnconfigure(0, weight=1)
-        self.rules_tab.grid_rowconfigure(1, weight=1)
-        toolbar = ctk.CTkFrame(self.rules_tab)
-        toolbar.grid(row=0, column=0, sticky='ew', padx=12, pady=12)
-        ctk.CTkButton(toolbar, text='Refresh', command=self.refresh_rules).pack(side='left', padx=6, pady=8)
-        ctk.CTkButton(toolbar, text='Toggle Selected', command=self.toggle_selected_rule).pack(side='left', padx=6, pady=8)
-        ctk.CTkButton(toolbar, text='Delete Selected', fg_color='#8a2f2f', hover_color='#a03a3a', command=self.delete_selected_rule).pack(side='left', padx=6, pady=8)
-        ctk.CTkButton(toolbar, text='Save Runtime INI', command=self.save_runtime).pack(side='right', padx=6, pady=8)
-        self.rules_box = ctk.CTkTextbox(self.rules_tab, font=ctk.CTkFont(family='Consolas', size=14))
-        self.rules_box.grid(row=1, column=0, sticky='nsew', padx=12, pady=(0, 12))
+    def _configured_game_exe_path(self) -> Path | None:
+        configured = str(getattr(Config.Importers.GPMI.Importer, 'game_folder', '') or '').strip().strip('"')
+        if not configured:
+            return None
+        path = Path(configured)
+        if path.suffix.lower() != '.exe' or not path.is_file():
+            return None
+        return path.resolve()
 
-    def _build_import_tab(self):
-        self.import_tab.grid_columnconfigure(1, weight=1)
-        self.import_tab.grid_rowconfigure(4, weight=1)
-        for i, label in enumerate(['Texture hash', 'Mod name', 'Note']):
-            ctk.CTkLabel(self.import_tab, text=label, anchor='e').grid(row=i, column=0, padx=(24, 12), pady=12, sticky='e')
-        self.hash_entry = ctk.CTkEntry(self.import_tab, placeholder_text='0x1234567890abcdef')
-        self.hash_entry.grid(row=0, column=1, sticky='ew', padx=(0, 24), pady=12)
-        self.mod_entry = ctk.CTkEntry(self.import_tab, placeholder_text='Default')
-        self.mod_entry.grid(row=1, column=1, sticky='ew', padx=(0, 24), pady=12)
-        self.note_entry = ctk.CTkEntry(self.import_tab, placeholder_text='例如：jean_default / Unit_H/...')
-        self.note_entry.grid(row=2, column=1, sticky='ew', padx=(0, 24), pady=12)
-        ctk.CTkButton(self.import_tab, text='Choose PNG and Add Rule', height=44, command=self.import_png_rule).grid(row=3, column=1, sticky='e', padx=(0, 24), pady=12)
-        self.import_status = ctk.CTkTextbox(self.import_tab, height=240)
-        self.import_status.grid(row=4, column=0, columnspan=2, sticky='nsew', padx=24, pady=(12, 24))
+    def _profile_required(self) -> Path | None:
+        if self.profile_dir is None:
+            messagebox.showerror(
+                'GPMI',
+                'Game executable is not configured. Select the exact game .exe in launcher settings first.'
+            )
+            return None
+        ensure_game_profile(self.profile_dir)
+        return self.profile_dir
 
-    def _build_dumps_tab(self):
-        self.dumps_tab.grid_columnconfigure(0, weight=3)
-        self.dumps_tab.grid_columnconfigure(1, weight=2)
-        self.dumps_tab.grid_rowconfigure(1, weight=1)
-        toolbar = ctk.CTkFrame(self.dumps_tab)
+    def _build_header(self):
+        self.header = ctk.CTkFrame(self, corner_radius=16)
+        self.header.grid(row=0, column=0, sticky='ew', padx=16, pady=(16, 8))
+        self.header.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(self.header, text='GPMI', font=ctk.CTkFont(size=28, weight='bold')).grid(
+            row=0, column=0, rowspan=3, padx=18, pady=14, sticky='w'
+        )
+        game_text = str(self.game_exe_path) if self.game_exe_path else 'No game .exe selected'
+        profile_text = str(self.profile_dir) if self.profile_dir else 'Unavailable until a game .exe is selected'
+        self.game_label = ctk.CTkLabel(self.header, text=f'Game EXE: {game_text}', anchor='w')
+        self.game_label.grid(row=0, column=1, sticky='ew', padx=10, pady=(14, 2))
+        self.profile_label = ctk.CTkLabel(self.header, text=f'GPMI Profile: {profile_text}', anchor='w')
+        self.profile_label.grid(row=1, column=1, sticky='ew', padx=10, pady=2)
+        ctk.CTkLabel(
+            self.header,
+            text='User mods live in <game exe folder>/GPMI/Mods. Runtime PTRTEX files and mod_meta.json are generated by GPMI.',
+            anchor='w',
+        ).grid(row=2, column=1, sticky='ew', padx=10, pady=(2, 14))
+
+        btns = ctk.CTkFrame(self.header, fg_color='transparent')
+        btns.grid(row=0, column=2, rowspan=3, padx=(8, 16), pady=10, sticky='e')
+        ctk.CTkButton(btns, text='Open GPMI', width=128, command=self.open_profile).pack(pady=3)
+        ctk.CTkButton(btns, text='Open Mods', width=128, command=self.open_mods).pack(pady=3)
+        ctk.CTkButton(btns, text='Refresh', width=128, command=self.refresh_all).pack(pady=3)
+
+    def _build_setup_tab(self):
+        self.setup_tab.grid_columnconfigure(0, weight=1)
+        self.setup_tab.grid_columnconfigure(1, weight=1)
+        self.setup_tab.grid_rowconfigure(2, weight=1)
+
+        actions = ctk.CTkFrame(self.setup_tab)
+        actions.grid(row=0, column=0, columnspan=2, sticky='ew', padx=12, pady=12)
+        ctk.CTkButton(actions, text='Import hash_db.json', command=self.import_hash_db).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(actions, text='Build Runtime Rules', command=self.apply_runtime_rules).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(actions, text='Create Example Mod Folders', command=self.create_example_mod_folders).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(actions, text='Open Runtime PTRTEX', command=self.open_runtime_mods).pack(side='right', padx=6, pady=8)
+
+        layout = ctk.CTkTextbox(self.setup_tab, height=145, font=ctk.CTkFont(family='Consolas', size=13))
+        layout.grid(row=1, column=0, columnspan=2, sticky='ew', padx=12, pady=(0, 12))
+        layout.insert('end', self._layout_help_text())
+        layout.configure(state='disabled')
+
+        self.hash_summary_box = ctk.CTkTextbox(self.setup_tab, font=ctk.CTkFont(family='Consolas', size=13))
+        self.hash_summary_box.grid(row=2, column=0, sticky='nsew', padx=(12, 6), pady=(0, 12))
+        self.meta_summary_box = ctk.CTkTextbox(self.setup_tab, font=ctk.CTkFont(family='Consolas', size=13))
+        self.meta_summary_box.grid(row=2, column=1, sticky='nsew', padx=(6, 12), pady=(0, 12))
+
+    def _layout_help_text(self) -> str:
+        return (
+            'Required user mod layout:\n'
+            '  <game exe folder>/GPMI/Mods/<character_id lowercase>/<outfit_name>/Unit/<one image>\n'
+            '  <game exe folder>/GPMI/Mods/<character_id lowercase>/<outfit_name>/Unit_H/<one image>\n\n'
+            'Generated files:\n'
+            '  GPMI/mod_meta.json records imported characters, outfit ids, source images, and generated PTRTEX paths.\n'
+            '  GPMI/RuntimeMods/<character>/<outfit_id>/<character>_<outfit_id>_Unit.ptrtex\n'
+            '  GPMI/RuntimeMods/<character>/<outfit_id>/<character>_<outfit_id>_Unit_H.ptrtex\n\n'
+            'Replacement rule: a character is enabled only when hash_db has both Unit and Unit_H hashes and the selected outfit has both PTRTEX files.'
+        )
+
+    def _build_mods_tab(self):
+        self.mods_tab.grid_columnconfigure(0, weight=3)
+        self.mods_tab.grid_columnconfigure(1, weight=2)
+        self.mods_tab.grid_rowconfigure(1, weight=1)
+
+        toolbar = ctk.CTkFrame(self.mods_tab)
         toolbar.grid(row=0, column=0, columnspan=2, sticky='ew', padx=12, pady=12)
-        ctk.CTkButton(toolbar, text='Refresh Dumps', command=self.refresh_dumps).pack(side='left', padx=6, pady=8)
-        ctk.CTkButton(toolbar, text='Preview Selected', command=self.preview_selected_dump).pack(side='left', padx=6, pady=8)
-        ctk.CTkButton(toolbar, text='Export Selected PNG', command=self.export_selected_dump_png).pack(side='left', padx=6, pady=8)
-        ctk.CTkButton(toolbar, text='Export All PNG', command=self.export_all_dump_pngs).pack(side='left', padx=6, pady=8)
-        ctk.CTkButton(toolbar, text='Create Rule From Dump', command=self.create_rule_from_dump).pack(side='left', padx=6, pady=8)
-        self.dumps_box = ctk.CTkTextbox(self.dumps_tab, font=ctk.CTkFont(family='Consolas', size=14))
-        self.dumps_box.grid(row=1, column=0, sticky='nsew', padx=12, pady=(0, 12))
-        preview_frame = ctk.CTkFrame(self.dumps_tab)
-        preview_frame.grid(row=1, column=1, sticky='nsew', padx=(0, 12), pady=(0, 12))
-        preview_frame.grid_columnconfigure(0, weight=1)
-        preview_frame.grid_rowconfigure(1, weight=1)
-        self.dump_preview_info = ctk.CTkLabel(preview_frame, text='Select a dump and click Preview Selected.', anchor='w')
-        self.dump_preview_info.grid(row=0, column=0, sticky='ew', padx=12, pady=(12, 8))
-        self.dump_preview_label = ctk.CTkLabel(preview_frame, text='No preview', width=360, height=360)
-        self.dump_preview_label.grid(row=1, column=0, sticky='nsew', padx=12, pady=(0, 12))
-        self.dump_preview_image = None
+        ctk.CTkButton(toolbar, text='Scan Mods', command=self.scan_mods).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Import Selected', command=self.import_selected_mod).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Import All Ready', command=self.import_all_mods).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Open Mods Folder', command=self.open_mods).pack(side='right', padx=6, pady=8)
+
+        self.mods_box = ctk.CTkTextbox(self.mods_tab, font=ctk.CTkFont(family='Consolas', size=13))
+        self.mods_box.grid(row=1, column=0, sticky='nsew', padx=(12, 6), pady=(0, 12))
+        self.import_status_box = ctk.CTkTextbox(self.mods_tab, font=ctk.CTkFont(family='Consolas', size=13))
+        self.import_status_box.grid(row=1, column=1, sticky='nsew', padx=(6, 12), pady=(0, 12))
+
+    def _build_outfits_tab(self):
+        self.outfits_tab.grid_columnconfigure(0, weight=2)
+        self.outfits_tab.grid_columnconfigure(1, weight=3)
+        self.outfits_tab.grid_rowconfigure(1, weight=1)
+
+        toolbar = ctk.CTkFrame(self.outfits_tab)
+        toolbar.grid(row=0, column=0, columnspan=2, sticky='ew', padx=12, pady=12)
+        ctk.CTkButton(toolbar, text='Refresh Imported Outfits', command=self.refresh_outfits).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Load Character Outfits', command=self.load_selected_character_outfits).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Select Outfit', command=self.select_selected_outfit).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Disable Character', command=self.disable_selected_character).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Apply to hash_db', command=self.apply_runtime_rules).pack(side='right', padx=6, pady=8)
+
+        self.characters_box = ctk.CTkTextbox(self.outfits_tab, font=ctk.CTkFont(family='Consolas', size=13))
+        self.characters_box.grid(row=1, column=0, sticky='nsew', padx=(12, 6), pady=(0, 12))
+        self.outfits_box = ctk.CTkTextbox(self.outfits_tab, font=ctk.CTkFont(family='Consolas', size=13))
+        self.outfits_box.grid(row=1, column=1, sticky='nsew', padx=(6, 12), pady=(0, 12))
 
     def _build_runtime_tab(self):
-        self.runtime_tab.grid_columnconfigure(1, weight=1)
-        self.runtime_tab.grid_rowconfigure(5, weight=1)
-        ctk.CTkLabel(self.runtime_tab, text='Godot EXE name').grid(row=0, column=0, padx=(24, 12), pady=12, sticky='e')
-        self.exe_entry = ctk.CTkEntry(self.runtime_tab, placeholder_text='Leave empty to auto-select the only .exe')
-        self.exe_entry.grid(row=0, column=1, sticky='ew', padx=(0, 24), pady=12, columnspan=2)
-        self.exe_entry.insert(0, Config.Importers.GPMI.Importer.custom_game_exe_name)
+        self.runtime_tab.grid_columnconfigure(0, weight=1)
+        self.runtime_tab.grid_rowconfigure(1, weight=1)
 
-        ctk.CTkLabel(self.runtime_tab, text='ReShade64.dll').grid(row=1, column=0, padx=(24, 12), pady=12, sticky='e')
-        self.reshade_entry = ctk.CTkEntry(self.runtime_tab)
-        self.reshade_entry.grid(row=1, column=1, sticky='ew', padx=(0, 12), pady=12)
-        self.reshade_entry.insert(0, Config.Importers.GPMI.Importer.reshade_dll_path or str(self.importer_path / 'Core/GPMI/ReShade64.dll'))
-        ctk.CTkButton(self.runtime_tab, text='Browse', command=lambda: self.browse_runtime(self.reshade_entry, 'ReShade64.dll')).grid(row=1, column=2, padx=(0, 24), pady=12)
+        toolbar = ctk.CTkFrame(self.runtime_tab)
+        toolbar.grid(row=0, column=0, sticky='ew', padx=12, pady=12)
+        ctk.CTkButton(toolbar, text='Build Runtime Rules', command=self.apply_runtime_rules).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Save Runtime INI', command=self.save_runtime_ini).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Open Log', command=self.open_log).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Open Dumps', command=self.open_dumps).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Refresh Status', command=self.refresh_runtime_status).pack(side='right', padx=6, pady=8)
 
-        ctk.CTkLabel(self.runtime_tab, text='PortraitHashReplace.addon64').grid(row=2, column=0, padx=(24, 12), pady=12, sticky='e')
-        self.addon_entry = ctk.CTkEntry(self.runtime_tab)
-        self.addon_entry.grid(row=2, column=1, sticky='ew', padx=(0, 12), pady=12)
-        self.addon_entry.insert(0, Config.Importers.GPMI.Importer.addon_dll_path or str(self.importer_path / 'Core/GPMI/PortraitHashReplace.addon64'))
-        ctk.CTkButton(self.runtime_tab, text='Browse', command=lambda: self.browse_runtime(self.addon_entry, 'PortraitHashReplace.addon64')).grid(row=2, column=2, padx=(0, 24), pady=12)
-
-        self.dump_var = ctk.BooleanVar(value=Config.Importers.GPMI.Importer.dump_unknown)
-        ctk.CTkCheckBox(self.runtime_tab, text='Dump unknown textures', variable=self.dump_var).grid(row=3, column=1, sticky='w', padx=(0, 24), pady=8)
-        ctk.CTkButton(self.runtime_tab, text='Save Runtime Settings', command=self.save_runtime_settings).grid(row=4, column=1, sticky='e', padx=(0, 24), pady=16)
+        self.runtime_status_box = ctk.CTkTextbox(self.runtime_tab, font=ctk.CTkFont(family='Consolas', size=13))
+        self.runtime_status_box.grid(row=1, column=0, sticky='nsew', padx=12, pady=(0, 12))
 
     def open_profile(self):
-        self._open_folder(self.importer_path)
+        profile = self._profile_required()
+        if profile:
+            self._open_folder(profile)
+
+    def open_mods(self):
+        profile = self._profile_required()
+        if profile:
+            self._open_folder(profile / USER_MODS_DIR)
+
+    def open_runtime_mods(self):
+        profile = self._profile_required()
+        if profile:
+            self._open_folder(profile / RUNTIME_MODS_DIR)
 
     def open_dumps(self):
-        self._open_folder(self.importer_path / 'Dumps')
+        profile = self._profile_required()
+        if profile:
+            self._open_folder(profile / 'Dumps')
+
+    def open_log(self):
+        profile = self._profile_required()
+        if not profile:
+            return
+        log_path = profile / 'PortraitHashReplace.log'
+        if not log_path.exists():
+            messagebox.showinfo('GPMI', f'Log file does not exist yet:\n{log_path}')
+            return
+        if os.name == 'nt':
+            os.startfile(log_path)
+        else:
+            subprocess.Popen(['xdg-open', str(log_path)])
 
     def _open_folder(self, path: Path):
         path.mkdir(parents=True, exist_ok=True)
@@ -149,193 +237,341 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             subprocess.Popen(['xdg-open', str(path)])
 
     def refresh_all(self):
-        self.refresh_rules()
-        self.refresh_dumps()
+        self.refresh_setup()
+        self.scan_mods()
+        self.refresh_outfits()
+        self.refresh_runtime_status()
 
-    def refresh_rules(self):
-        db = load_hash_db(self.importer_path / 'hash_db.json')
-        self.rules_box.configure(state='normal')
-        self.rules_box.delete('1.0', 'end')
-        lines = [f'enabled={db.enabled} dump_unknown={db.dump_unknown} min={db.min_width}x{db.min_height}', '']
-        for idx, rule in enumerate(db.rules, 1):
-            status = 'ON ' if rule.enabled else 'OFF'
-            lines.append(f'{idx:03d} [{status}] {rule.hash} -> {rule.replacement}  # {rule.note}')
-        if len(lines) == 2:
-            lines.append('No rules yet. Import a PNG or create a rule from a dump.')
-        self.rules_box.insert('end', '\n'.join(lines))
-        self.rules_box.configure(state='normal')
+    def _set_textbox(self, box: ctk.CTkTextbox, text: str):
+        box.configure(state='normal')
+        box.delete('1.0', 'end')
+        box.insert('end', text)
+        box.configure(state='normal')
 
-    def _selected_rule_index(self):
-        try:
-            line_no = int(self.rules_box.index('insert').split('.')[0])
-        except Exception:
-            return None
-        line = self.rules_box.get(f'{line_no}.0', f'{line_no}.end')
-        if not line[:3].isdigit():
-            return None
-        return int(line[:3]) - 1
+    def refresh_setup(self):
+        profile = self.profile_dir
+        if profile is None:
+            self._set_textbox(self.hash_summary_box, 'No game .exe selected.\n')
+            self._set_textbox(self.meta_summary_box, 'Select the exact game .exe first.\n')
+            return
+        ensure_game_profile(profile)
+        summary = summarize_hash_db(profile)
+        hash_lines = [
+            f'Profile: {profile}',
+            f'hash_db: {profile / HASH_DB_FILE}',
+            '',
+        ]
+        if not summary.get('exists'):
+            hash_lines.append('hash_db.json is missing. Use Import hash_db.json to copy the externally generated DB here.')
+        else:
+            hash_lines += [
+                f'rules: {summary.get("rules", 0)}',
+                f'enabled rules: {summary.get("enabled", 0)}',
+                f'characters in hash_db: {summary.get("characters", 0)}',
+            ]
+            generated = summary.get('generated') or {}
+            if generated:
+                hash_lines += [
+                    '',
+                    'last GPMI generation:',
+                    f'  enabled_rules: {generated.get("enabled_rules", 0)}',
+                    f'  disabled_rules: {generated.get("disabled_rules", 0)}',
+                    f'  selected_outfits: {json.dumps(generated.get("selected_outfits", {}), ensure_ascii=False)}',
+                ]
+                issues = generated.get('issues') or {}
+                if issues:
+                    hash_lines.append('  issues:')
+                    for cid, values in issues.items():
+                        hash_lines.append(f'    {cid}: {"; ".join(values)}')
+        self._set_textbox(self.hash_summary_box, '\n'.join(hash_lines))
 
-    def toggle_selected_rule(self):
-        idx = self._selected_rule_index()
-        if idx is None:
-            messagebox.showinfo('GPMI', 'Select a rule line first.')
-            return
-        db = load_hash_db(self.importer_path / 'hash_db.json')
-        if idx >= len(db.rules):
-            return
-        db.rules[idx].enabled = not db.rules[idx].enabled
-        save_hash_db(self.importer_path / 'hash_db.json', db)
-        write_runtime_ini(self.importer_path, db)
-        self.refresh_rules()
+        meta = load_mod_meta(profile)
+        char_count = len(meta.get('characters', {}))
+        outfit_count = sum(len(c.get('outfits', {})) for c in meta.get('characters', {}).values())
+        meta_lines = [
+            f'meta: {profile / META_FILE}',
+            f'imported characters: {char_count}',
+            f'imported outfits: {outfit_count}',
+            f'selected outfits: {json.dumps(meta.get("selected_outfits", {}), ensure_ascii=False)}',
+        ]
+        self._set_textbox(self.meta_summary_box, '\n'.join(meta_lines))
 
-    def delete_selected_rule(self):
-        idx = self._selected_rule_index()
-        if idx is None:
-            messagebox.showinfo('GPMI', 'Select a rule line first.')
+    def import_hash_db(self):
+        profile = self._profile_required()
+        if not profile:
             return
-        db = load_hash_db(self.importer_path / 'hash_db.json')
-        if idx >= len(db.rules):
-            return
-        rule = db.rules[idx]
-        if messagebox.askyesno('GPMI', f'Delete rule {rule.hash}?'):
-            remove_rules(self.importer_path, [rule.hash])
-            self.refresh_rules()
-
-    def import_png_rule(self):
-        try:
-            hash_text = normalize_hash(self.hash_entry.get())
-        except Exception as e:
-            messagebox.showerror('GPMI', f'Invalid hash: {e}')
-            return
-        src = filedialog.askopenfilename(title='Choose replacement PNG', filetypes=[('PNG images', '*.png'), ('All files', '*.*')])
+        src = filedialog.askopenfilename(title='Choose externally generated hash_db.json', filetypes=[('JSON files', '*.json'), ('All files', '*.*')])
         if not src:
             return
-        mod_name = self.mod_entry.get().strip() or 'Default'
         try:
-            dst, width, height, fmt = import_replacement_texture(self.importer_path, Path(src), mod_name, Config.Importers.GPMI.Importer.ptr_bgra_import)
-            rule = add_or_update_rule(self.importer_path, hash_text, dst, self.note_entry.get().strip(), True)
-            self.import_status.insert('end', f'Imported {src}\n -> {dst}\n {width}x{height} {fmt}\n rule: {rule.hash}\n\n')
-            self.refresh_rules()
+            data = json.loads(Path(src).read_text(encoding='utf-8'))
+            if not isinstance(data.get('rules'), list):
+                raise ValueError("hash_db.json must contain a 'rules' list")
+            shutil.copy2(src, profile / HASH_DB_FILE)
+            self.refresh_all()
+            messagebox.showinfo('GPMI', f'Imported hash_db.json to:\n{profile / HASH_DB_FILE}')
         except Exception as e:
-            messagebox.showerror('GPMI', str(e))
+            messagebox.showerror('GPMI', f'Failed to import hash_db.json:\n{e}')
 
-    def refresh_dumps(self):
-        dumps = sorted((self.importer_path / 'Dumps').glob('*.ptrtex'))
-        self.dumps_box.configure(state='normal')
-        self.dumps_box.delete('1.0', 'end')
-        if not dumps:
-            self.dumps_box.insert('end', 'No dumps yet. Start the game with Dump unknown textures enabled, then return here.\n')
+    def create_example_mod_folders(self):
+        profile = self._profile_required()
+        if not profile:
             return
-        for idx, dump in enumerate(dumps, 1):
-            try:
-                info = ptrtex_info(dump)
-                self.dumps_box.insert('end', f'{idx:03d} {dump.stem}  {info["width"]}x{info["height"]} {info["format"]}  {dump}\n')
-            except Exception as e:
-                self.dumps_box.insert('end', f'{idx:03d} {dump.stem}  unreadable: {e}\n')
+        base = profile / USER_MODS_DIR / 'example_character' / 'example_outfit'
+        for slot in REQUIRED_SLOTS:
+            (base / slot).mkdir(parents=True, exist_ok=True)
+        self.refresh_all()
+        messagebox.showinfo(
+            'GPMI',
+            'Created example folders. Put exactly one image under each folder:\n'
+            f'{base / "Unit"}\n{base / "Unit_H"}'
+        )
 
-    def _selected_dump_hash(self):
+    def scan_mods(self):
+        profile = self.profile_dir
+        if profile is None:
+            self.scanned_mods = []
+            self._set_textbox(self.mods_box, 'No game .exe selected.\n')
+            return
+        ensure_game_profile(profile)
+        self.scanned_mods = scan_user_mods(profile)
+        lines = [f'Scanned: {profile / USER_MODS_DIR}', '']
+        if not self.scanned_mods:
+            lines.append('No source mods found. Expected: Mods/<character>/<outfit>/Unit and Unit_H.')
+        for idx, item in enumerate(self.scanned_mods, 1):
+            status = 'READY' if item['ready'] else 'BAD  '
+            label = f'{item["character_id"]}/{item["source_outfit_name"]}'
+            lines.append(f'{idx:03d} [{status}] {label}')
+            lines.append(f'      path: {item["source_path"]}')
+            for slot in REQUIRED_SLOTS:
+                lines.append(f'      {slot}: {item.get("slot_files", {}).get(slot, "<missing>")}')
+            if item['issues']:
+                lines.append(f'      issues: {"; ".join(item["issues"])}')
+        self._set_textbox(self.mods_box, '\n'.join(lines))
+
+    def _selected_index(self, box: ctk.CTkTextbox, max_count: int) -> int | None:
         try:
-            line_no = int(self.dumps_box.index('insert').split('.')[0])
+            line_no = int(box.index('insert').split('.')[0])
         except Exception:
             return None
-        line = self.dumps_box.get(f'{line_no}.0', f'{line_no}.end')
-        if not line[:3].isdigit():
+        line = box.get(f'{line_no}.0', f'{line_no}.end')
+        if len(line) < 3 or not line[:3].isdigit():
             return None
-        parts = line.split()
-        return parts[1] if len(parts) > 1 else None
-
-    def _selected_dump_path(self):
-        hash_text = self._selected_dump_hash()
-        if hash_text is None:
+        idx = int(line[:3]) - 1
+        if idx < 0 or idx >= max_count:
             return None
-        path = self.importer_path / 'Dumps' / f'{hash_text}.ptrtex'
-        return path if path.is_file() else None
+        return idx
 
-    def preview_selected_dump(self):
-        path = self._selected_dump_path()
-        if path is None:
-            messagebox.showinfo('GPMI', 'Select a dump line first.')
+    def import_selected_mod(self):
+        profile = self._profile_required()
+        if not profile:
+            return
+        idx = self._selected_index(self.mods_box, len(self.scanned_mods))
+        if idx is None:
+            messagebox.showinfo('GPMI', 'Select a mod line first.')
+            return
+        item = self.scanned_mods[idx]
+        if not item['ready']:
+            messagebox.showerror('GPMI', 'Cannot import incomplete mod:\n' + '; '.join(item['issues']))
             return
         try:
-            image = ptrtex_to_image(path)
-            info = ptrtex_info(path)
-            preview = image.copy()
-            preview.thumbnail((420, 420))
-            self.dump_preview_image = ctk.CTkImage(light_image=preview, dark_image=preview, size=preview.size)
-            self.dump_preview_label.configure(image=self.dump_preview_image, text='')
-            self.dump_preview_info.configure(
-                text=f'{path.stem}  {info["width"]}x{info["height"]} {info["format"]}'
+            outfit = import_user_mod(profile, item['character_id'], item['source_outfit_name'])
+            self._append_import_status(f'Imported {item["character_id"]}/{item["source_outfit_name"]} -> {outfit["id"]}')
+            self.refresh_setup()
+            self.refresh_outfits()
+        except Exception as e:
+            messagebox.showerror('GPMI', f'Failed to import mod:\n{e}')
+
+    def import_all_mods(self):
+        profile = self._profile_required()
+        if not profile:
+            return
+        try:
+            imported, failures = import_all_ready_mods(profile)
+            lines = [f'Imported {len(imported)} mod(s).']
+            for outfit in imported:
+                lines.append(f'  {outfit["character_id"]}/{outfit["source_name"]} -> {outfit["id"]}')
+            if failures:
+                lines.append('')
+                lines.append('Failures:')
+                lines.extend(f'  {failure}' for failure in failures)
+            self._append_import_status('\n'.join(lines))
+            self.refresh_setup()
+            self.refresh_outfits()
+        except Exception as e:
+            messagebox.showerror('GPMI', f'Failed to import mods:\n{e}')
+
+    def _append_import_status(self, text: str):
+        self.import_status_box.insert('end', text + '\n\n')
+        self.import_status_box.see('end')
+
+    def refresh_outfits(self):
+        profile = self.profile_dir
+        self.character_rows = []
+        self.outfit_rows = []
+        if profile is None:
+            self._set_textbox(self.characters_box, 'No game .exe selected.\n')
+            self._set_textbox(self.outfits_box, 'No game .exe selected.\n')
+            return
+        meta = load_mod_meta(profile)
+        characters = meta.get('characters', {})
+        selected = meta.get('selected_outfits', {})
+        lines = ['Characters with imported outfits:', '']
+        for idx, cid in enumerate(sorted(characters.keys()), 1):
+            outfits = characters[cid].get('outfits', {})
+            selected_id = selected.get(cid, '<disabled>')
+            self.character_rows.append(cid)
+            lines.append(f'{idx:03d} {cid}  selected={selected_id}  outfits={len(outfits)}')
+        if not self.character_rows:
+            lines.append('No imported outfits. Import mods first.')
+        self._set_textbox(self.characters_box, '\n'.join(lines))
+        self.selected_character_id = self.selected_character_id if self.selected_character_id in characters else None
+        self._render_outfits_for_character(self.selected_character_id)
+
+    def load_selected_character_outfits(self):
+        idx = self._selected_index(self.characters_box, len(self.character_rows))
+        if idx is None:
+            messagebox.showinfo('GPMI', 'Select a character line first.')
+            return
+        self.selected_character_id = self.character_rows[idx]
+        self._render_outfits_for_character(self.selected_character_id)
+
+    def _render_outfits_for_character(self, cid: str | None):
+        self.outfit_rows = []
+        profile = self.profile_dir
+        if profile is None:
+            self._set_textbox(self.outfits_box, 'No game .exe selected.\n')
+            return
+        if not cid:
+            self._set_textbox(self.outfits_box, 'Select a character, then click Load Character Outfits.\n')
+            return
+        meta = load_mod_meta(profile)
+        char = meta.get('characters', {}).get(cid, {})
+        selected_id = meta.get('selected_outfits', {}).get(cid, '')
+        outfits = char.get('outfits', {})
+        lines = [f'Outfits for {cid}:', '']
+        for idx, outfit_id in enumerate(sorted(outfits.keys()), 1):
+            outfit = outfits[outfit_id]
+            mark = 'SELECTED' if outfit_id == selected_id else '        '
+            ready = all((profile / outfit.get('files', {}).get(slot, '')).is_file() for slot in REQUIRED_SLOTS)
+            state = 'READY' if ready else 'BAD  '
+            self.outfit_rows.append((outfit_id, outfit))
+            lines.append(f'{idx:03d} [{mark}] [{state}] {outfit_id}  source={outfit.get("source_name", "")}')
+            for slot in REQUIRED_SLOTS:
+                lines.append(f'      {slot}: {outfit.get("files", {}).get(slot, "<missing>")}')
+        if not self.outfit_rows:
+            lines.append('No imported outfits for this character.')
+        self._set_textbox(self.outfits_box, '\n'.join(lines))
+
+    def select_selected_outfit(self):
+        profile = self._profile_required()
+        if not profile:
+            return
+        if not self.selected_character_id:
+            messagebox.showinfo('GPMI', 'Select a character first.')
+            return
+        idx = self._selected_index(self.outfits_box, len(self.outfit_rows))
+        if idx is None:
+            messagebox.showinfo('GPMI', 'Select an outfit line first.')
+            return
+        outfit_id, _outfit = self.outfit_rows[idx]
+        try:
+            select_imported_outfit(profile, self.selected_character_id, outfit_id)
+            self.refresh_outfits()
+            self.refresh_setup()
+            messagebox.showinfo('GPMI', f'Selected outfit {self.selected_character_id}/{outfit_id}. Click Apply to hash_db to update runtime rules.')
+        except Exception as e:
+            messagebox.showerror('GPMI', f'Failed to select outfit:\n{e}')
+
+    def disable_selected_character(self):
+        profile = self._profile_required()
+        if not profile:
+            return
+        if not self.selected_character_id:
+            idx = self._selected_index(self.characters_box, len(self.character_rows))
+            if idx is not None:
+                self.selected_character_id = self.character_rows[idx]
+        if not self.selected_character_id:
+            messagebox.showinfo('GPMI', 'Select a character first.')
+            return
+        clear_selected_outfit(profile, self.selected_character_id)
+        self.refresh_outfits()
+        self.refresh_setup()
+        messagebox.showinfo('GPMI', f'Disabled {self.selected_character_id}. Click Apply to hash_db to update runtime rules.')
+
+    def apply_runtime_rules(self):
+        profile = self._profile_required()
+        if not profile:
+            return
+        try:
+            result = build_runtime_hash_db(profile)
+            self.save_runtime_ini(show_message=False)
+            self.refresh_setup()
+            self.refresh_runtime_status()
+            lines = [
+                f'enabled_rules: {result.get("enabled_rules", 0)}',
+                f'disabled_rules: {result.get("disabled_rules", 0)}',
+            ]
+            issues = result.get('issues') or {}
+            if issues:
+                lines.append('issues:')
+                for cid, values in issues.items():
+                    lines.append(f'  {cid}: {"; ".join(values)}')
+            messagebox.showinfo('GPMI', 'Runtime hash_db updated.\n\n' + '\n'.join(lines))
+        except Exception as e:
+            messagebox.showerror('GPMI', f'Failed to build runtime hash_db:\n{e}')
+
+    def save_runtime_ini(self, show_message: bool = True):
+        profile = self._profile_required()
+        if not profile:
+            return
+        try:
+            core_dir = Config.Importers.GPMI.Importer.importer_path / 'Core/GPMI'
+            write_runtime_ini(
+                profile,
+                dump_unknown=bool(Config.Importers.GPMI.Importer.dump_unknown),
+                min_width=int(Config.Importers.GPMI.Importer.min_width),
+                min_height=int(Config.Importers.GPMI.Importer.min_height),
+                mirror_dirs=[core_dir],
             )
+            self.refresh_runtime_status()
+            if show_message:
+                messagebox.showinfo('GPMI', 'Runtime INI saved.')
         except Exception as e:
-            messagebox.showerror('GPMI', f'Failed to preview dump: {e}')
+            messagebox.showerror('GPMI', f'Failed to save runtime INI:\n{e}')
 
-    def export_selected_dump_png(self):
-        path = self._selected_dump_path()
-        if path is None:
-            messagebox.showinfo('GPMI', 'Select a dump line first.')
+    def refresh_runtime_status(self):
+        profile = self.profile_dir
+        if profile is None:
+            self._set_textbox(self.runtime_status_box, 'No game .exe selected.\n')
             return
-        dst = filedialog.asksaveasfilename(
-            title='Export dump as PNG',
-            initialfile=f'{path.stem}.png',
-            defaultextension='.png',
-            filetypes=[('PNG images', '*.png'), ('All files', '*.*')],
-        )
-        if not dst:
-            return
-        try:
-            width, height, fmt = ptrtex_to_png(path, Path(dst))
-            messagebox.showinfo('GPMI', f'Exported {width}x{height} {fmt} PNG.')
-        except Exception as e:
-            messagebox.showerror('GPMI', f'Failed to export PNG: {e}')
-
-    def export_all_dump_pngs(self):
-        dumps = sorted((self.importer_path / 'Dumps').glob('*.ptrtex'))
-        if not dumps:
-            messagebox.showinfo('GPMI', 'No dumps to export.')
-            return
-        out_dir = self.importer_path / 'Dumps' / 'png'
-        exported = 0
-        failures = []
-        for dump in dumps:
-            try:
-                ptrtex_to_png(dump, out_dir / f'{dump.stem}.png')
-                exported += 1
-            except Exception as e:
-                failures.append(f'{dump.name}: {e}')
-        if failures:
-            messagebox.showwarning('GPMI', f'Exported {exported} PNG files.\n\nFailed:\n' + '\n'.join(failures[:8]))
-        else:
-            messagebox.showinfo('GPMI', f'Exported {exported} PNG files to:\n{out_dir}')
-
-    def create_rule_from_dump(self):
-        hash_text = self._selected_dump_hash()
-        if hash_text is None:
-            hash_text = simpledialog.askstring('GPMI', 'Texture hash from dump:')
-        if not hash_text:
-            return
-        self.hash_entry.delete(0, 'end')
-        self.hash_entry.insert(0, hash_text)
-        self.tabs.set('Import Texture')
-
-    def save_runtime(self):
-        db = load_hash_db(self.importer_path / 'hash_db.json')
-        write_runtime_ini(self.importer_path, db)
-        messagebox.showinfo('GPMI', 'Runtime INI saved.')
-
-    def browse_runtime(self, entry, title):
-        path = filedialog.askopenfilename(title=title, filetypes=[('DLL/addon files', '*.dll *.addon64'), ('All files', '*.*')])
-        if path:
-            entry.delete(0, 'end')
-            entry.insert(0, path)
-
-    def save_runtime_settings(self):
-        Config.Importers.GPMI.Importer.custom_game_exe_name = self.exe_entry.get().strip()
-        Config.Importers.GPMI.Importer.reshade_dll_path = self.reshade_entry.get().strip()
-        Config.Importers.GPMI.Importer.addon_dll_path = self.addon_entry.get().strip()
-        Config.Importers.GPMI.Importer.dump_unknown = bool(self.dump_var.get())
-        Config.Config.save()
-        db = load_hash_db(self.importer_path / 'hash_db.json')
-        db.dump_unknown = Config.Importers.GPMI.Importer.dump_unknown
-        save_hash_db(self.importer_path / 'hash_db.json', db)
-        write_runtime_ini(self.importer_path, db)
-        messagebox.showinfo('GPMI', 'Runtime settings saved.')
+        summary = summarize_hash_db(profile)
+        meta = load_mod_meta(profile)
+        lines = [
+            f'Profile: {profile}',
+            f'Mods: {profile / USER_MODS_DIR}',
+            f'Runtime PTRTEX: {profile / RUNTIME_MODS_DIR}',
+            f'hash_db: {profile / HASH_DB_FILE}',
+            f'meta: {profile / META_FILE}',
+            f'log: {profile / "PortraitHashReplace.log"}',
+            '',
+            f'hash_db exists: {summary.get("exists")}',
+            f'hash_db rules: {summary.get("rules", 0)}',
+            f'enabled runtime rules: {summary.get("enabled", 0)}',
+            f'imported characters: {len(meta.get("characters", {}))}',
+            f'selected outfits: {json.dumps(meta.get("selected_outfits", {}), ensure_ascii=False)}',
+        ]
+        generated = summary.get('generated') or {}
+        if generated:
+            lines += [
+                '',
+                'Last build_runtime_hash_db result:',
+                f'  enabled_rules: {generated.get("enabled_rules", 0)}',
+                f'  disabled_rules: {generated.get("disabled_rules", 0)}',
+            ]
+            issues = generated.get('issues') or {}
+            if issues:
+                lines.append('  issues:')
+                for cid, values in issues.items():
+                    lines.append(f'    {cid}: {"; ".join(values)}')
+        self._set_textbox(self.runtime_status_box, '\n'.join(lines))
