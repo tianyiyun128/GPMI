@@ -1,6 +1,5 @@
 import logging
 import os
-import subprocess
 import time
 import shlex
 from dataclasses import dataclass, field
@@ -85,7 +84,7 @@ class GPMIPackage(ModelImporterPackage):
             package_name='GPMI',
             auto_load=False,
             installation_path='GPMI/',
-            requirements=['XXMI'],
+            requirements=[],
             # XXMI's Package base class always initializes Security(public_key=...).
             # GPMI is a local/offline package, but this field still must contain a
             # syntactically valid DER public key string or launcher startup fails.
@@ -134,40 +133,49 @@ class GPMIPackage(ModelImporterPackage):
                 message='GPMI uses hash_db.json and PTRTEX files; there are no 3DMigoto INI files to optimize.'
             ))
 
-    def validate_game_path(self, game_folder) -> Path:
-        game_path = Path(game_folder)
-        if not str(game_folder):
-            raise ValueError('Game folder is not configured.')
-        if not game_path.is_absolute() or not game_path.is_dir():
-            raise ValueError(f'Game folder not found: {game_path}')
-        return game_path
+    def _configured_game_exe_path(self) -> Optional[Path]:
+        """Return the exact game executable selected by the user.
 
-    def _candidate_exe_names(self) -> List[str]:
+        GPMI is intentionally single-target: the launcher stores and starts one
+        explicit Godot game .exe. Folder auto-detection/scanning from the original
+        XXMI importers is disabled so sibling tools/editors never trigger the old
+        "multiple .exe files" path.
+        """
         cfg = Config.Active.Importer
-        names = []
-        if cfg.custom_game_exe_name:
-            names.append(cfg.custom_game_exe_name)
-        names.extend(cfg.game_exe_names)
-        return [name for name in names if name]
+        configured = str(getattr(cfg, 'game_folder', '') or '').strip().strip('"')
+        if not configured:
+            return None
+        return Path(configured)
+
+    def validate_game_path(self, game_folder) -> Path:
+        configured_path = Path(str(game_folder or '').strip().strip('"'))
+        if not str(configured_path):
+            raise ValueError('Game executable is not configured. Select the exact Godot game .exe first.')
+        if configured_path.suffix.lower() != '.exe':
+            raise ValueError(
+                'GPMI requires an exact game executable path, not a folder. '
+                'Click Browse and select the Godot game .exe.'
+            )
+        if not configured_path.is_absolute():
+            raise ValueError(f'Game executable path must be absolute: {configured_path}')
+        if not configured_path.is_file():
+            raise ValueError(f'Game executable not found: {configured_path}')
+        return configured_path.parent
 
     def validate_game_exe_path(self, game_path: Path) -> Path:
-        for exe_name in self._candidate_exe_names():
-            exe_path = game_path / exe_name
-            if exe_path.is_file():
-                return exe_path
-        candidates = [p for p in game_path.glob('*.exe') if 'crash' not in p.name.lower() and 'unins' not in p.name.lower()]
-        if len(candidates) == 1:
-            return candidates[0]
-        if len(candidates) > 1:
-            names = ', '.join(p.name for p in candidates[:10])
-            raise ValueError(
-                'Multiple .exe files were found. Set custom_game_exe_name in GPMI settings/config. '\
-                f'Candidates: {names}'
-            )
-        raise ValueError('No .exe file was found in the configured Godot game folder.')
+        explicit_exe = self._configured_game_exe_path()
+        if explicit_exe is None:
+            raise ValueError('Game executable is not configured. Select the exact Godot game .exe first.')
+        if not explicit_exe.is_absolute():
+            explicit_exe = game_path / explicit_exe
+        if explicit_exe.suffix.lower() != '.exe':
+            raise ValueError(f'Configured game path is not an .exe: {explicit_exe}')
+        if not explicit_exe.is_file():
+            raise ValueError(f'Selected game executable not found: {explicit_exe}')
+        return explicit_exe
 
     def detect_game_paths(self, supress_errors=False):
-        # A generic Godot game cannot be reliably auto-detected. Use Settings > General > Game Folder.
+        # A generic Godot game cannot be reliably auto-detected. Use Settings > General > Game Executable.
         if supress_errors:
             return []
         raise UserWarning('Automatic game detection is not supported for generic GPMI targets.')
@@ -175,6 +183,8 @@ class GPMIPackage(ModelImporterPackage):
     def get_game_paths(self):
         game_path = self.validate_game_path(Config.Active.Importer.game_folder)
         game_exe_path = self.validate_game_exe_path(game_path)
+        # Keep runtime config normalized for later reads in the same session.
+        Config.Active.Importer.custom_game_exe_name = game_exe_path.name
         return game_path, game_exe_path
 
     def _resolve_runtime_dll(self, configured_path: str, default_rel: str, label: str) -> Path:
@@ -199,6 +209,34 @@ class GPMIPackage(ModelImporterPackage):
         db.min_width = Config.Active.Importer.min_width
         db.min_height = Config.Active.Importer.min_height
         write_runtime_ini(importer_path, db)
+
+    def _prepare_reshade_config(self, reshade_dll: Path):
+        """Create the minimal ReShade config required for LoadLibrary injection.
+
+        ReShade intentionally aborts initialization when it is loaded as a normal
+        DLL named ReShade64.dll and no ReShade.ini exists for the target app.
+        GPMI keeps ReShade outside the game folder, so we point ReShade at the
+        GPMI runtime directory and keep the add-on search path local.
+        """
+        reshade_base = reshade_dll.parent
+        (reshade_base / 'Addons').mkdir(parents=True, exist_ok=True)
+        reshade_ini = reshade_base / 'ReShade.ini'
+        reshade_ini.write_text(
+            '[INSTALL]\n'
+            'BasePath=.\n'
+            'Logging=1\n'
+            '\n'
+            '[ADDON]\n'
+            'AddonPath=Addons\n'
+            '\n'
+            '[GENERAL]\n'
+            'PresetPath=.\\GPMI_ReShadePreset.ini\n',
+            encoding='utf-8'
+        )
+        preset = reshade_base / 'GPMI_ReShadePreset.ini'
+        if not preset.exists():
+            preset.write_text('[General]\n', encoding='utf-8')
+        return reshade_base
 
     def get_start_cmd(self, game_path: Path) -> Tuple[Path, List[str], Optional[str]]:
         game_exe_path = self.validate_game_exe_path(game_path)
@@ -238,36 +276,34 @@ class GPMIPackage(ModelImporterPackage):
             except Exception:
                 log.exception('Failed to mirror GPMI add-on')
 
-        try:
-            xxmi_package = self.manager.get_package('XXMI')
-            injector_lib = xxmi_package.package_path / '3dmloader.dll'
-        except Exception as e:
-            raise ValueError('XXMI runtime injector package is not installed. Install/repair XXMI first.') from e
+        reshade_base = self._prepare_reshade_config(reshade_dll)
 
-        from core.utils.dll_injector import DllInjector
-        from core.utils.process_tracker import wait_for_process, WaitResult
+        from core.gpmi.win_reshade_injector import start_suspended_and_inject_dll
+        from core.utils.process_tracker import get_hwnds_for_pid
+        import psutil
 
         Events.Fire(Events.Application.Inject(library_name=reshade_dll.name, process_name=game_exe_path.name))
-        injector = DllInjector(injector_lib, load_inject=True)
-        try:
-            injector.open_process(
-                start_method=Config.Active.Importer.process_start_method,
-                exe_path=str(start_exe_path),
-                work_dir=work_dir,
-                start_args=start_args,
-                process_flags=subprocess.NORMAL_PRIORITY_CLASS,
-                process_name=game_exe_path.name,
-                dll_paths=[reshade_dll],
-                cmd=None,
-                inject_timeout=Config.Active.Importer.process_timeout,
-            )
-            Events.Fire(Events.Application.WaitForProcess(process_name=game_exe_path.name))
-            result, _pid = wait_for_process(game_exe_path.name, with_window=True, timeout=Config.Active.Importer.process_timeout, check_visibility=True)
-            if result == WaitResult.Timeout:
-                raise ValueError(f'Failed to detect game window for {game_exe_path.name}.')
-            time.sleep(0.5)
-        finally:
-            try:
-                injector.unload()
-            except Exception:
-                log.exception('Failed to unload injector')
+        pid = start_suspended_and_inject_dll(
+            exe_path=start_exe_path,
+            args=start_args,
+            work_dir=work_dir,
+            dll_path=reshade_dll,
+            timeout_seconds=Config.Active.Importer.process_timeout,
+            env_overrides={
+                'RESHADE_BASE_PATH_OVERRIDE': str(reshade_base),
+                # ReShade otherwise rejects non-proxy LoadLibrary loads when no
+                # per-game ReShade.ini exists next to the Godot executable.
+                'RESHADE_DISABLE_LOADING_CHECK': '1',
+            },
+        )
+
+        Events.Fire(Events.Application.WaitForProcess(process_name=game_exe_path.name))
+        deadline = time.time() + max(1, int(Config.Active.Importer.process_timeout))
+        while time.time() < deadline:
+            if not psutil.pid_exists(pid):
+                raise ValueError(f'{game_exe_path.name} exited before its window appeared.')
+            if get_hwnds_for_pid(pid=pid, check_visibility=True):
+                time.sleep(0.5)
+                return
+            time.sleep(0.1)
+        raise ValueError(f'Failed to detect game window for {game_exe_path.name}.')

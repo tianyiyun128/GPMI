@@ -10,9 +10,6 @@ from gui.classes.containers import UIFrame
 from gui.classes.widgets import UIButton, UILabel
 
 from gui.windows.settings.frames.general_settings_frame import GeneralSettingsFrame
-from gui.windows.settings.frames.importer_settings_frame import ModelImporterSettingsFrame
-from gui.windows.settings.frames.advanced_settings_frame import AdvancedSettingsFrame
-from gui.windows.settings.frames.launcher_settings_frame import LauncherSettingsFrame
 
 log = logging.getLogger(__name__)
 
@@ -37,11 +34,8 @@ class SettingsTabsFrame(UIFrame):
         self.selected_tab = None
 
         self.add_tab('GENERAL_TAB', L('settings_tab_general', 'General'), GeneralSettingsFrame(master=self.tab_content_frame, fix_grid=default_tab=='GENERAL_TAB'))
-        self.add_tab('LAUNCHER_TAB', L('settings_tab_launcher', 'Launcher'), LauncherSettingsFrame(master=self.tab_content_frame, fix_grid=default_tab=='LAUNCHER_TAB'))
-        self.add_tab('IMPORTER_TAB', L('settings_tab_importer', 'MI'), ModelImporterSettingsFrame(master=self.tab_content_frame))
-        self.add_tab('ADVANCED_TAB', L('settings_tab_advanced', 'Advanced'), AdvancedSettingsFrame(master=self.tab_content_frame))
 
-        self.select_tab(self.tabs[default_tab])
+        self.select_tab(self.tabs.get(default_tab, self.tabs['GENERAL_TAB']))
 
         self.trace_save(Vars.Settings.Launcher.active_importer, self.handle_active_importer_update)
         self.trace_save(Vars.Active.Importer.importer_folder, self.handle_importer_folder_update)
@@ -90,7 +84,7 @@ class SettingsTabsFrame(UIFrame):
         button.configure(text=tab_name)
 
     def handle_active_importer_update(self, var, val, old_val):
-        self.rename_tab('IMPORTER_TAB', val)
+        return
 
 
 class SettingsTabsListFrame(UIFrame):

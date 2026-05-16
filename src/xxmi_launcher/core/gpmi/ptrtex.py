@@ -47,6 +47,38 @@ def png_to_ptrtex(src: Path, dst: Path, bgra: bool = False) -> Tuple[int, int, s
     return width, height, fmt_name
 
 
+def ptrtex_to_image(src: Path):
+    from PIL import Image
+
+    width, height, fmt, row_pitch, pixels = read_ptrtex(src)
+    row_bytes = width * 4
+    if row_pitch < row_bytes:
+        raise ValueError("PTRTEX row pitch is smaller than the image width")
+    if fmt not in (FMT_RGBA8, FMT_BGRA8):
+        raise ValueError(f"Unsupported PTRTEX format: {fmt}")
+
+    packed = bytearray(height * row_bytes)
+    for y in range(height):
+        src_offset = y * row_pitch
+        dst_offset = y * row_bytes
+        packed[dst_offset:dst_offset + row_bytes] = pixels[src_offset:src_offset + row_bytes]
+
+    if fmt == FMT_BGRA8:
+        for i in range(0, len(packed), 4):
+            packed[i], packed[i + 2] = packed[i + 2], packed[i]
+
+    return Image.frombytes("RGBA", (width, height), bytes(packed), "raw", "RGBA")
+
+
+def ptrtex_to_png(src: Path, dst: Path) -> Tuple[int, int, str]:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    image = ptrtex_to_image(src)
+    image.save(dst, "PNG")
+    _, _, fmt, _, _ = read_ptrtex(src)
+    fmt_name = "RGBA8" if fmt == FMT_RGBA8 else "BGRA8" if fmt == FMT_BGRA8 else f"unknown({fmt})"
+    return image.width, image.height, fmt_name
+
+
 def ptrtex_info(path: Path) -> Dict[str, object]:
     width, height, fmt, row_pitch, pixels = read_ptrtex(path)
     return {

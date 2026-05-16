@@ -37,7 +37,7 @@ class DllInjector:
 
     def load(self, injector_lib_path, load_hook=False, load_inject=False):
         if not injector_lib_path.exists():
-            raise ValueError(L('error_dll_injector_file_not_found', 'Injector file not found: {injector_lib_path}!').format(path=injector_lib_path))
+            raise ValueError(L('error_dll_injector_file_not_found', 'Injector file not found: {injector_lib_path}!').format(injector_lib_path=injector_lib_path))
 
         try:
             self.lib = ct.cdll.LoadLibrary(str(injector_lib_path))

@@ -178,27 +178,27 @@ class LauncherPackage(Package):
     def create_shortcut(self):
         pythoncom.CoInitialize()
 
-        with winshell.shortcut(str(Path(winshell.desktop()) / f'XXMI Launcher.lnk')) as link:
+        with winshell.shortcut(str(Path(winshell.desktop()) / f'GPMI.lnk')) as link:
             link.path = str(Path(sys.executable))
-            link.description = L('launcher_shortcut_description', 'Shortcut to XXMI Launcher')
+            link.description = L('launcher_shortcut_description', 'Shortcut to GPMI')
             link.working_directory = str(Paths.App.Resources / 'Bin')
             link.icon_location = (str(Paths.App.Themes / 'Default' / 'window-icon.ico'), 0)
 
-        with winshell.shortcut(str(Paths.App.Root / f'XXMI Launcher.lnk')) as link:
+        with winshell.shortcut(str(Paths.App.Root / f'GPMI.lnk')) as link:
             link.path = str(Path(sys.executable))
-            link.description = L('launcher_shortcut_description', 'Shortcut to XXMI Launcher')
+            link.description = L('launcher_shortcut_description', 'Shortcut to GPMI')
             link.working_directory = str(Paths.App.Resources / 'Bin')
             link.icon_location = (str(Paths.App.Themes / 'Default' / 'window-icon.ico'), 0)
 
     def uninstall(self):
         log.debug(f'Uninstalling package {self.metadata.package_name}...')
 
-        shortcut_path = Path(winshell.desktop()) / f'XXMI Launcher.lnk'
+        shortcut_path = Path(winshell.desktop()) / f'GPMI.lnk'
         if shortcut_path.is_file():
             log.debug(f'Removing {shortcut_path}...')
             shortcut_path.unlink()
 
-        shortcut_path = Paths.App.Root / f'XXMI Launcher.lnk'
+        shortcut_path = Paths.App.Root / f'GPMI.lnk'
         if shortcut_path.is_file():
             log.debug(f'Removing {shortcut_path}...')
             shortcut_path.unlink()

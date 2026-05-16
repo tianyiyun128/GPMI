@@ -38,3 +38,10 @@ Build the add-on from `Resources/Packages/GPMI/Tools/kernel_source`. The CMake p
 - This is an MVP integration with the real XXMI UI shell. It cannot be guaranteed to work on every Godot renderer path until tested against the target packaged exe.
 - The hash replacement approach intentionally avoids relying on the original GDScript `config.user_path + "/MOD/"` file reads.
 - GPLv3 redistribution is compatible with using the XXMI Launcher source under its existing license terms, but keep upstream notices intact.
+
+## 2026-05-16 hotfix: remove XXMI injector dependency
+
+- Replaced `Resources/Packages/XXMI/3dmloader.dll` injection dependency with `core/gpmi/win_reshade_injector.py`.
+- GPMI now starts the selected Godot exe suspended, injects `ReShade64.dll` with Windows `LoadLibraryW`, then resumes the game process.
+- Removed GPMI package requirement on `XXMI`.
+- Fixed stale `Injector file not found: {injector_lib_path}!` formatting in the legacy injector utility.

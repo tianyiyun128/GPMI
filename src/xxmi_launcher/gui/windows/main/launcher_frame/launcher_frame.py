@@ -12,7 +12,6 @@ from gui.classes.containers import UIFrame
 from gui.classes.widgets import UIText, UIImageButton
 from gui.windows.main.launcher_frame.top_bar import TopBarFrame
 from gui.windows.main.launcher_frame.bottom_bar import BottomBarFrame
-from gui.windows.main.launcher_frame.tool_bar import ToolBarFrame
 from gui.windows.settings.settings_frame import SettingsFrame
 
 
@@ -26,7 +25,7 @@ class LauncherFrame(UIFrame):
         self.canvas.grid(row=0, column=0)
 
         if minimal:
-            self.set_background_image(f'background-image-xxmi.webp', width=master.cfg.width,height=master.cfg.height)
+            self.set_background_image('background-image-gpmi.webp', width=master.cfg.width, height=master.cfg.height)
             return
 
         # Background
@@ -38,21 +37,12 @@ class LauncherFrame(UIFrame):
         # Bottom Panel
         self.put(BottomBarFrame(self, self.canvas, width=master.cfg.width, height=master.cfg.height)).grid(row=0, column=0, sticky='swe')
 
-        # Game Tiles Panel
-        self.put(SelectGameText(self))
-        for index, importer_id in enumerate(Config.Importers.__dict__.keys()):
-            self.put(GameTileButton(self, index, importer_id))
-
         # Action Panel
-        self.put(UpdateButton(self))
-        tools_button = self.put(ToolsButton(self))
-        self.put(StartButton(self, tools_button))
-        self.put(InstallButton(self, tools_button))
-        self.put(ToolBarFrame(self, self.canvas))
+        self.put(PortraitManagerMainButton(self))
+        self.put(StartButton(self, None))
 
         # Package versions
         self.put(LauncherVersionText(self))
-        self.put(XXMIVersionText(self))
         self.put(ImporterVersionText(self))
 
         # Settings Frame
@@ -275,16 +265,36 @@ class UpdateButton(MainActionButton):
             self.hide()
 
 
-class StartButton(MainActionButton):
-    def __init__(self, master, tools_button):
+class PortraitManagerMainButton(MainActionButton):
+    def __init__(self, master):
         super().__init__(
-            x=1023,
+            x=800,
+            width=32,
+            height=32,
+            button_image_path='button-tools.png',
+            button_x_offset=12,
+            bg_image_path='button-start-background.png',
+            bg_width=280,
+            bg_height=64,
+            text='Portrait Manager',
+            text_x_offset=8,
+            text_y_offset=-1,
+            font=('Microsoft YaHei', 18, 'bold'),
+            command=lambda: Events.Fire(Events.Application.OpenPortraitManager()),
+            auto_offset='center',
+            auto_offset_pad=7,
+            master=master)
+
+class StartButton(MainActionButton):
+    def __init__(self, master, tools_button=None):
+        super().__init__(
+            x=1130,
             width=32,
             height=32,
             button_image_path='button-start.png',
             button_x_offset=17,
             bg_image_path='button-start-background.png',
-            bg_width=340,
+            bg_width=260,
             bg_height=64,
             text=L('launcher_start_button', 'Start'),
             text_x_offset=17,
@@ -309,25 +319,29 @@ class StartButton(MainActionButton):
         self.show(self.stage == Stage.Ready and Config.Launcher.active_importer != 'XXMI')
 
     def _handle_enter(self, event):
-        self.tools_button._handle_enter(None, True)
+        if self.tools_button is not None:
+            self.tools_button._handle_enter(None, True)
         super()._handle_enter(self)
 
     def _handle_leave(self, event):
-        self.tools_button._handle_leave(None, True)
+        if self.tools_button is not None:
+            self.tools_button._handle_leave(None, True)
         super()._handle_leave(self)
 
     def _handle_button_press(self, event):
-        self.tools_button.set_selected(True)
+        if self.tools_button is not None:
+            self.tools_button.set_selected(True)
         super()._handle_button_press(self)
 
     def _handle_button_release(self, event):
-        self.tools_button.selected = False
-        self.tools_button._handle_leave(None, True)
+        if self.tools_button is not None:
+            self.tools_button.selected = False
+            self.tools_button._handle_leave(None, True)
         super()._handle_button_release(self)
 
 
 class InstallButton(MainActionButton):
-    def __init__(self, master, tools_button):
+    def __init__(self, master, tools_button=None):
         super().__init__(
             x=1023,
             width=32,
@@ -357,20 +371,24 @@ class InstallButton(MainActionButton):
         self.show(self.stage == Stage.Ready and Config.Launcher.active_importer != 'XXMI')
 
     def _handle_enter(self, event):
-        self.tools_button._handle_enter(None, True)
+        if self.tools_button is not None:
+            self.tools_button._handle_enter(None, True)
         super()._handle_enter(self)
 
     def _handle_leave(self, event):
-        self.tools_button._handle_leave(None, True)
+        if self.tools_button is not None:
+            self.tools_button._handle_leave(None, True)
         super()._handle_leave(self)
 
     def _handle_button_press(self, event):
-        self.tools_button.set_selected(True)
+        if self.tools_button is not None:
+            self.tools_button.set_selected(True)
         super()._handle_button_press(self)
 
     def _handle_button_release(self, event):
-        self.tools_button.selected = False
-        self.tools_button._handle_leave(None, True)
+        if self.tools_button is not None:
+            self.tools_button.selected = False
+            self.tools_button._handle_leave(None, True)
         super()._handle_button_release(self)
 
 
@@ -414,13 +432,12 @@ class PackageVersionText(UIImageButton):
         self.set_tooltip(self.get_tooltip, delay = 0)
         self.subscribe(Events.GUI.LauncherFrame.StageUpdate, self.handle_stage_update)
         self.package_aliases = {
-            'Launcher': 'XXMI Launcher',
+            'Launcher': 'GPMI',
             'XXMI': 'XXMI DLL',
         }
         self.dev_blog_links = {
             'XXMI-Launcher': 'https://www.patreon.com/collection/1552149',
             'XXMI-Libs-Package': 'https://www.patreon.com/collection/1552154',
-            'WWMI-Package': 'https://www.patreon.com/collection/1552139',
         }
         self.bind("<ButtonRelease-3>", self.open_changelog_link)
 
@@ -466,7 +483,7 @@ class PackageVersionText(UIImageButton):
 
         if self.package_name == 'Launcher':
             package_description = L('package_description_launcher', """
-                *This package is XXMI Launcher App itself and defines its features.*
+                *This package is the GPMI launcher app itself and defines its features.*
             """)
         elif self.package_name == 'XXMI':
             package_description = L('package_description_xxmi_libraries', """
@@ -476,7 +493,7 @@ class PackageVersionText(UIImageButton):
             package_description = L('package_description_model_importer', """
                 *Model Importer package offers a set of API functions required for mods to work in given game.*
             """)
-        if self.package_name in ['Launcher', 'XXMI', 'WWMI']:
+        if self.package_name in ['Launcher', 'XXMI']:
             actions_tooltip = L('package_description_tooltip_open_github_changelog', """
                 <font color="#3366ff">*<u>Left-Click</u> to open {package_name} Dev Blog on Patreon.*</font>
                 <font color="#3366ff">*<u>Right-Click</u> to open {package_name} GitHub releases for full changelog.*</font>
@@ -520,7 +537,7 @@ class LauncherVersionText(PackageVersionText):
         self.show(self.stage == Stage.Ready)
 
     def handle_version_notification(self, event):
-        self.set_text(f'LAUNCHER {event.package_states["Launcher"].installed_version}')
+        self.set_text(f'GPMI LAUNCHER {event.package_states["Launcher"].installed_version}')
 
 
 class XXMIVersionText(PackageVersionText):
@@ -547,7 +564,7 @@ class XXMIVersionText(PackageVersionText):
 
 class ImporterVersionText(PackageVersionText):
     def __init__(self, master):
-        super().__init__(x=265,
+        super().__init__(x=210,
                          y=680,
                          master=master)
         self.subscribe(Events.Application.LoadImporter, self.handle_load_importer)

@@ -33,7 +33,7 @@ class MainWindow(UIMainWindow):
 
         self.hide()
 
-        self.cfg.title = 'XXMI Launcher'
+        self.cfg.title = 'GPMI'
         self.cfg.width = 1280
         self.cfg.height = 720
 

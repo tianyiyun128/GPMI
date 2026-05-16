@@ -150,7 +150,7 @@ class MessageFrame(UIFrame):
     def _handle_mouse_move(self, event):
         Events.Fire(Events.Application.MoveWindow(offset_x=self._offset_x, offset_y=self._offset_y))
 
-    def set_content(self, model_importer = 'WWMI', num_sessions = 0, mode = 'NORMAL'):
+    def set_content(self, model_importer = 'GPMI', num_sessions = 0, mode = 'NORMAL'):
         pass
 
     def close(self):

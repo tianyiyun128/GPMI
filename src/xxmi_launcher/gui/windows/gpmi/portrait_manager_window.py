@@ -21,7 +21,7 @@ from core.gpmi.profile import (
     save_hash_db,
     write_runtime_ini,
 )
-from core.gpmi.ptrtex import ptrtex_info
+from core.gpmi.ptrtex import ptrtex_info, ptrtex_to_image, ptrtex_to_png
 
 
 class PortraitManagerWindow(ctk.CTkToplevel):
@@ -89,20 +89,33 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         self.import_status.grid(row=4, column=0, columnspan=2, sticky='nsew', padx=24, pady=(12, 24))
 
     def _build_dumps_tab(self):
-        self.dumps_tab.grid_columnconfigure(0, weight=1)
+        self.dumps_tab.grid_columnconfigure(0, weight=3)
+        self.dumps_tab.grid_columnconfigure(1, weight=2)
         self.dumps_tab.grid_rowconfigure(1, weight=1)
         toolbar = ctk.CTkFrame(self.dumps_tab)
-        toolbar.grid(row=0, column=0, sticky='ew', padx=12, pady=12)
+        toolbar.grid(row=0, column=0, columnspan=2, sticky='ew', padx=12, pady=12)
         ctk.CTkButton(toolbar, text='Refresh Dumps', command=self.refresh_dumps).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Preview Selected', command=self.preview_selected_dump).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Export Selected PNG', command=self.export_selected_dump_png).pack(side='left', padx=6, pady=8)
+        ctk.CTkButton(toolbar, text='Export All PNG', command=self.export_all_dump_pngs).pack(side='left', padx=6, pady=8)
         ctk.CTkButton(toolbar, text='Create Rule From Dump', command=self.create_rule_from_dump).pack(side='left', padx=6, pady=8)
         self.dumps_box = ctk.CTkTextbox(self.dumps_tab, font=ctk.CTkFont(family='Consolas', size=14))
         self.dumps_box.grid(row=1, column=0, sticky='nsew', padx=12, pady=(0, 12))
+        preview_frame = ctk.CTkFrame(self.dumps_tab)
+        preview_frame.grid(row=1, column=1, sticky='nsew', padx=(0, 12), pady=(0, 12))
+        preview_frame.grid_columnconfigure(0, weight=1)
+        preview_frame.grid_rowconfigure(1, weight=1)
+        self.dump_preview_info = ctk.CTkLabel(preview_frame, text='Select a dump and click Preview Selected.', anchor='w')
+        self.dump_preview_info.grid(row=0, column=0, sticky='ew', padx=12, pady=(12, 8))
+        self.dump_preview_label = ctk.CTkLabel(preview_frame, text='No preview', width=360, height=360)
+        self.dump_preview_label.grid(row=1, column=0, sticky='nsew', padx=12, pady=(0, 12))
+        self.dump_preview_image = None
 
     def _build_runtime_tab(self):
         self.runtime_tab.grid_columnconfigure(1, weight=1)
-        self.runtime_tab.grid_rowconfigure(6, weight=1)
+        self.runtime_tab.grid_rowconfigure(5, weight=1)
         ctk.CTkLabel(self.runtime_tab, text='Godot EXE name').grid(row=0, column=0, padx=(24, 12), pady=12, sticky='e')
-        self.exe_entry = ctk.CTkEntry(self.runtime_tab, placeholder_text='留空则自动选择唯一的 .exe')
+        self.exe_entry = ctk.CTkEntry(self.runtime_tab, placeholder_text='Leave empty to auto-select the only .exe')
         self.exe_entry.grid(row=0, column=1, sticky='ew', padx=(0, 24), pady=12, columnspan=2)
         self.exe_entry.insert(0, Config.Importers.GPMI.Importer.custom_game_exe_name)
 
@@ -121,18 +134,6 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         self.dump_var = ctk.BooleanVar(value=Config.Importers.GPMI.Importer.dump_unknown)
         ctk.CTkCheckBox(self.runtime_tab, text='Dump unknown textures', variable=self.dump_var).grid(row=3, column=1, sticky='w', padx=(0, 24), pady=8)
         ctk.CTkButton(self.runtime_tab, text='Save Runtime Settings', command=self.save_runtime_settings).grid(row=4, column=1, sticky='e', padx=(0, 24), pady=16)
-        text = (
-            '运行方式：XXMI UI 启动原版 exe → 注入 ReShade64.dll → ReShade 加载 PortraitHashReplace.addon64 → '
-            'add-on 计算纹理上传 hash → 命中 hash_db.json 后用 PTRTEX 替换上传数据。\n\n'
-            '需要你自己放入/编译两个运行时文件：\n'
-            '1. Core/GPMI/ReShade64.dll\n'
-            '2. Core/GPMI/PortraitHashReplace.addon64\n\n'
-            'hash_db.json 和 ptr_config.ini 会由此管理器维护。'
-        )
-        runtime_info = ctk.CTkTextbox(self.runtime_tab)
-        runtime_info.grid(row=6, column=0, columnspan=3, sticky='nsew', padx=24, pady=(8, 24))
-        runtime_info.insert('end', text)
-        runtime_info.configure(state='disabled')
 
     def open_profile(self):
         self._open_folder(self.importer_path)
@@ -242,6 +243,69 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             return None
         parts = line.split()
         return parts[1] if len(parts) > 1 else None
+
+    def _selected_dump_path(self):
+        hash_text = self._selected_dump_hash()
+        if hash_text is None:
+            return None
+        path = self.importer_path / 'Dumps' / f'{hash_text}.ptrtex'
+        return path if path.is_file() else None
+
+    def preview_selected_dump(self):
+        path = self._selected_dump_path()
+        if path is None:
+            messagebox.showinfo('GPMI', 'Select a dump line first.')
+            return
+        try:
+            image = ptrtex_to_image(path)
+            info = ptrtex_info(path)
+            preview = image.copy()
+            preview.thumbnail((420, 420))
+            self.dump_preview_image = ctk.CTkImage(light_image=preview, dark_image=preview, size=preview.size)
+            self.dump_preview_label.configure(image=self.dump_preview_image, text='')
+            self.dump_preview_info.configure(
+                text=f'{path.stem}  {info["width"]}x{info["height"]} {info["format"]}'
+            )
+        except Exception as e:
+            messagebox.showerror('GPMI', f'Failed to preview dump: {e}')
+
+    def export_selected_dump_png(self):
+        path = self._selected_dump_path()
+        if path is None:
+            messagebox.showinfo('GPMI', 'Select a dump line first.')
+            return
+        dst = filedialog.asksaveasfilename(
+            title='Export dump as PNG',
+            initialfile=f'{path.stem}.png',
+            defaultextension='.png',
+            filetypes=[('PNG images', '*.png'), ('All files', '*.*')],
+        )
+        if not dst:
+            return
+        try:
+            width, height, fmt = ptrtex_to_png(path, Path(dst))
+            messagebox.showinfo('GPMI', f'Exported {width}x{height} {fmt} PNG.')
+        except Exception as e:
+            messagebox.showerror('GPMI', f'Failed to export PNG: {e}')
+
+    def export_all_dump_pngs(self):
+        dumps = sorted((self.importer_path / 'Dumps').glob('*.ptrtex'))
+        if not dumps:
+            messagebox.showinfo('GPMI', 'No dumps to export.')
+            return
+        out_dir = self.importer_path / 'Dumps' / 'png'
+        exported = 0
+        failures = []
+        for dump in dumps:
+            try:
+                ptrtex_to_png(dump, out_dir / f'{dump.stem}.png')
+                exported += 1
+            except Exception as e:
+                failures.append(f'{dump.name}: {e}')
+        if failures:
+            messagebox.showwarning('GPMI', f'Exported {exported} PNG files.\n\nFailed:\n' + '\n'.join(failures[:8]))
+        else:
+            messagebox.showinfo('GPMI', f'Exported {exported} PNG files to:\n{out_dir}')
 
     def create_rule_from_dump(self):
         hash_text = self._selected_dump_hash()

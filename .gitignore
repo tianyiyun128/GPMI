@@ -1,22 +1,19 @@
-/!BUILD/
-/!MEDIA/
-/!RELEASES/
-/!TRASH/
-/Assets/
-.idea/
 __pycache__/
-/Backups/
-/Downloads/
-/Resources/
-/Locale/active_locale.cfg
-/WWMI/
-/ZZMI/
-/SRMI/
-/GIMI/
-/HIMI/
-/EFMI/
-/ReShade/
-/XXMI Launcher Config.json
-/XXMI-Launcher Log.txt
-/XXMI Launcher Log.txt
-/fps_config.json
+*.pyc
+*.pyo
+*.log
+Backups/
+Resources/Security/*.key
+Resources/Security/*.der
+Resources/Packages/Updater/
+Resources/Packages/GPMI/Tools/kernel_source/build*/
+Resources/Packages/GPMI/Tools/third_party/reshade/*
+!Resources/Packages/GPMI/Tools/third_party/reshade/LICENSE.md
+!Resources/Packages/GPMI/Tools/third_party/reshade/include/
+!Resources/Packages/GPMI/Tools/third_party/reshade/include/**
+XXMI Launcher Log.txt
+XXMI Launcher Log.txt.bak
+XXMI Launcher Config.json
+GPMI Log.txt
+GPMI Log.txt.bak
+GPMI Config.json

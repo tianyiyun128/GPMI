@@ -490,8 +490,8 @@ class ModelImporterPackage(Package):
         ini = IniHandler(IniHandlerSettings(ignore_comments=False), Paths.App.read_text(ini_path))
 
         # Set default game exe as target, can be overridden via XXMI Launcher Config.json:
-        # 1. Locate "Importers" > "GIMI" > "Importer" > "d3dx_ini"> "core" > "Loader"
-        # 2. Add `"target": "GenshinImpact.exe",` line before `"loader": "XXMI Launcher.exe"`
+        # 1. Locate the active importer d3dx_ini core Loader section
+        # 2. Add a target executable line before the launcher entry
         ini.set_option('Loader', 'target', game_exe_path.name)
 
         ini.set_option('System', 'dll_initialization_delay', Config.Active.Importer.xxmi_dll_init_delay)

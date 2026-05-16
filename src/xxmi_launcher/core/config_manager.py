@@ -45,8 +45,6 @@ class AppConfig:
         default_factory=lambda: SecurityConfig()
     )
     # State fields
-    # Active: Optional[WWMIConfig] = field(init=False, default=None)
-
     active_theme: Optional[str] = field(init=False, default=None)
 
     def __post_init__(self):
@@ -58,6 +56,10 @@ class AppConfig:
 
     @property
     def config_path(self):
+        return Paths.App.Root / 'GPMI Config.json'
+
+    @property
+    def legacy_config_path(self):
         return Paths.App.Root / 'XXMI Launcher Config.json'
 
     @property
@@ -117,6 +119,8 @@ class AppConfig:
 
     def load(self, cfg_path=None):
         try:
+            if cfg_path is None and not self.config_path.is_file() and self.legacy_config_path.is_file():
+                cfg_path = self.legacy_config_path
             Config.from_json(cfg_path or self.config_path)
         except Exception as e:
             log.exception(e)

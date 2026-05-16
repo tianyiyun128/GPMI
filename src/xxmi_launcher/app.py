@@ -84,18 +84,18 @@ if __name__ == '__main__':
     multiprocessing.freeze_support()
 
     if '__compiled__' in globals():
-        # Nuitka (release build): `XXMI Launcher\Resources\Bin\XXMI Launcher.exe`
+        # Nuitka (release build): `GPMI\Resources\Bin\GPMI.exe`
         root_path = Path(sys.argv[0]).resolve().parent.parent.parent
     elif getattr(sys, 'frozen', False):
-        # Pyinstaller (debug build): `XXMI Launcher\Resources\Bin\XXMI Launcher.exe`
+        # Pyinstaller (debug build): `GPMI\Resources\Bin\GPMI.exe`
         root_path = Path(sys.executable).parent.parent.parent
     else:
-        # Python (native): `XXMI Launcher\src\xxmi_launcher\app.py`
+        # Python (native): `GPMI\src\xxmi_launcher\app.py`
         root_path = Path(__file__).resolve().parent.parent.parent
 
     instance_id = int(time.time() * 1000) % 1000000
 
-    logging.basicConfig(filename=root_path / 'XXMI Launcher Log.txt',
+    logging.basicConfig(filename=root_path / 'GPMI Log.txt',
                         encoding='utf-8',
                         filemode='a',
                         format=f'%(asctime)s {instance_id:06} %(name)s %(levelname)s %(message)s',
@@ -145,7 +145,7 @@ if __name__ == '__main__':
             # Try to show error in less scary message window of minimal gui
             page_link = 'https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-supported-redistributable-version'
             direct_link = 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
-            log_path = f'<a href="file:///{root_path / "XXMI Launcher Log.txt"}">XXMI Launcher Log.txt</a>'
+            log_path = f'<a href="file:///{root_path / "GPMI Log.txt"}">GPMI Log.txt</a>'
 
             error_title = L('message_title_fatal_error', 'Fatal Error')
 
@@ -195,7 +195,7 @@ if __name__ == '__main__':
             # Fallback to the most basic messagebox
             logging.exception(gui_error)
 
-            log_path = root_path / "XXMI Launcher Log.txt"
+            log_path = root_path / "GPMI Log.txt"
 
             if msvc_error is not None:
                 error = L('error_msvc_integrity_verification_failed_plain', """
@@ -224,6 +224,6 @@ if __name__ == '__main__':
 
             from tkinter.messagebox import showerror
             showerror(
-                title=f'XXMI Launcher - {L('message_title_fatal_error', 'Fatal Error')}',
+                title=f'GPMI - {L('message_title_fatal_error', 'Fatal Error')}',
                 message=error,
             )

@@ -405,19 +405,13 @@ class ModManager:
         """Shutdown the worst ini offenders in Mods folder.
 
         Quite often, due to lack of knowledge (or infrastructure), modders ship unwanted ini files with their mods.
-        Those files have extremely negative impact on performance and stability, and here we:
-        1. Disable all rogue d3dx.ini files (should never be present in Mods folder).
-        2. Disable all VSCheck.ini files (they trigger ib, already done by EFMI).
-        3. Comment out all CheckTextureOverride for ib or vb0 in any section (already done by WWMI/EFMI).
-        4. Comment out all ShaderRegex sections running global CheckTextureOverride (FPS killers).
+        Those files have extremely negative impact on performance and stability.
+        In the GPMI-only build this keeps only the generic d3dx.ini/ShaderRegex
+        safety checks and removes all old game-specific importer branches.
         """
         dry_prefix = '[DRY]: ' if dry_run else ''
 
         Paths.verify_path(mods_path)
-
-        if Config.Launcher.active_importer in ['GIMI']:
-            libs_path = Config.Active.Importer.importer_path / 'Core' / 'GIMI' / 'Libraries'
-            self.disable_duplicate_libraries(libs_path, mods_path, exclude_patterns, dry_run)
 
         self.ini_validator = IniValidator(
             folder_path=mods_path,
@@ -430,15 +424,7 @@ class ModManager:
         self.ini_validator.d3dx_ini_keywords = {'[loader', '[system', '[stereo', '[commandlistunbindallrendertargets'}
         self.ini_validator.d3dx_ini_option_values = {'include': {'include_recursive': 'mods', 'exclude_recursive': 'disabled*'}}
 
-        if Config.Launcher.active_importer == 'EFMI':
-            self.ini_validator.unwanted_triggers = {'ib'}
-        elif Config.Launcher.active_importer == 'WWMI':
-            self.ini_validator.unwanted_triggers = {'ib', 'vb0'}
-
         self.ini_validator.unwanted_files = {'shaderfixes': {'3dvision2sbs.ini', 'help.ini', 'mouse.ini', 'upscale.ini'}}
-
-        if Config.Launcher.active_importer == 'EFMI':
-            self.ini_validator.unwanted_files['*'] = {'vscheck.ini'}
 
         validation_results = self.ini_validator.validate_folder()
 
@@ -660,10 +646,7 @@ class ModManager:
             if line.strip().startswith(';'):
                 continue
             indent = line[:len(line) - len(line.lstrip())]
-            if issue.reason == 'ib' and Config.Launcher.active_importer == 'WWMI':
-                fixed_line = r"$\WWMIv1\enable_ib_callbacks = 1"
-            else:
-                fixed_line = ';' + line.strip()
+            fixed_line = ';' + line.strip()
             log.info(f'    - Line #{issue.line_id+1} `{line.strip()}` with `{fixed_line}` (reason: {issue.reason})')
             parsed_ini.ini_lines[issue.line_id] = indent + fixed_line
         # Write ini with commented ini lines with issues

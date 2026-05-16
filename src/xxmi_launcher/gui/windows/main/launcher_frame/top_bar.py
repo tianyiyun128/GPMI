@@ -1,13 +1,8 @@
 import webbrowser
 
-from dataclasses import dataclass
-from enum import Enum, auto
-
 import core.event_manager as Events
 import core.path_manager as Paths
 import core.config_manager as Config
-import gui.vars as Vars
-
 from core.locale_manager import L
 
 from gui.events import Stage
@@ -26,15 +21,9 @@ class TopBarFrame(UIFrame):
         self.background_image.bind('<Button-1>', self._handle_button_press)
         self.background_image.bind('<B1-Motion>', self._handle_mouse_move)
 
-        for importer_id in Config.Importers.__dict__.keys():
-            self.put(ImporterSelectButton(self, importer_id))
-
-        # GPMI-only build: hide the XXMI model-importer selector.
-
-        self.put(DonateButton(self))
-        self.put(GameBananaButton(self))
-        self.put(DiscordButton(self))
+        # GPMI is a single-target launcher now: no importer/game selector buttons.
         self.put(GitHubButton(self))
+        self.put(DonateButton(self))
 
         self.put(SettingsButton(self))
         self.put(MinimizeButton(self))
@@ -69,104 +58,7 @@ class TopBarFrame(UIFrame):
                 idx = len(Config.Launcher.enabled_importers) - 1
                 Events.Fire(Events.GUI.LauncherFrame.ToggleImporter(importer_id=event.importer_id, index=idx, show=True))
 
-        # GPMI-only build: do not append the XXMI management tile/button.
-
-
-# region Importer Selection Buttons
-
-class ImporterSelectButton(UIImageButton):
-    def __init__(self, master, importer_id, **kwargs):
-        defaults = {}
-        defaults.update(
-            button_image_path=f'button-select-game-{importer_id.lower()}.png',
-            button_normal_opacity=0.8,
-            button_hover_opacity=1,
-            button_selected_opacity=1,
-            button_disabled_opacity=0.5,
-            bg_image_path='button-select-game-background.png',
-            bg_width=60,
-            bg_height=60,
-            bg_normal_opacity=0,
-            bg_hover_opacity=0.4,
-            bg_selected_opacity=0.6,
-            bg_disabled_opacity=0,
-            command=lambda: Events.Fire(Events.Application.LoadImporter(importer_id=importer_id)),
-            master=master
-        )
-        defaults.update(kwargs)
-        super().__init__(**defaults)
-        self.importer_id = importer_id
-        self.subscribe(Events.GUI.LauncherFrame.StageUpdate, self.handle_stage_update)
-        self.subscribe(Events.Application.LoadImporter,
-                       lambda event: self.set_selected(event.importer_id == importer_id))
-        self.subscribe(Events.GUI.LauncherFrame.ToggleImporter, self.handle_toggle_importer)
-        self.subscribe(Events.GUI.LauncherFrame.HoverImporter, self.handle_hover_importer)
-
-        tooltips = {
-            'XXMI': L('top_bar_xxmi_button_tooltip', 'Manage Model Importers'),
-            'WWMI': L('top_bar_wwmi_button_tooltip', 'Wuthering Waves Model Importer'),
-            'ZZMI': L('top_bar_zzmi_button_tooltip', 'Zenless Zone Zero Model Importer'),
-            'SRMI': L('top_bar_srmi_button_tooltip', 'Honkai: Star Rail Model Importer'),
-            'GIMI': L('top_bar_gimi_button_tooltip', 'Genshin Impact Model Importer'),
-            'HIMI': L('top_bar_himi_button_tooltip', 'Honkai Impact Model Importer'),
-            'EFMI': L('top_bar_efmi_button_tooltip', 'Arknights: Endfield Model Importer'),
-            'GPMI': L('top_bar_gpmi_button_tooltip', 'Godot Portrait Model Importer'),
-        }
-        self.set_tooltip(tooltips[importer_id], delay=0.5)
-
-        try:
-            idx = Config.Launcher.enabled_importers.index(importer_id)
-            Events.Fire(Events.GUI.LauncherFrame.ToggleImporter(importer_id=importer_id, index=idx, show=True))
-        except ValueError:
-            Events.Fire(Events.GUI.LauncherFrame.ToggleImporter(importer_id=importer_id, index=-1, show=False))
-
-    def _handle_button_press(self, event):
-        if self.disabled:
-            return
-        self.command()
-
-    def _handle_button_release(self, event):
-        pass
-
-    def handle_stage_update(self, event):
-        if event.stage == Stage.Ready:
-            self.set_disabled(False)
-        elif not self.selected:
-            self.set_disabled(True)
-
-    def handle_toggle_importer(self, event):
-        if event.importer_id != self.importer_id:
-            return
-        if event.show:
-            self.move(x=40 + 80 * event.index)
-            self.show()
-        else:
-            self.hide()
-
-    def handle_hover_importer(self, event):
-        if event.importer_id != self.importer_id:
-            return
-        if event.hover:
-            self._handle_enter(None)
-        else:
-            self._handle_leave(None)
-
-
-class LoadXXMIButton(ImporterSelectButton):
-    def __init__(self, master):
-        super().__init__(
-            importer_id='XXMI',
-            width=38,
-            height=38,
-            button_normal_opacity=0.25,
-            button_hover_opacity=0.9,
-            button_selected_opacity=0.9,
-            button_disabled_opacity=0.15,
-            # bg_hover_opacity=0,
-            # bg_selected_opacity=0,
-            master=master)
-
-# endregion
+        # No XXMI management page in the GPMI-only UI.
 
 
 # region Web Resource Buttons
@@ -189,57 +81,14 @@ class WebResourceButton(UIImageButton):
         super().__init__(**kwargs)
 
     
-class GameBananaButton(WebResourceButton):
-    def __init__(self, master):
-        super().__init__(
-            x=790,
-            button_image_path='button-resource-gamebanana.png',
-            command=self.open_link,
-            master=master)
-        self.subscribe(Events.Application.LoadImporter, self.handle_load_importer)
-        self.set_tooltip(self.get_tooltip, delay=0.01)
-
-    def handle_load_importer(self, event):
-        self.show(event.importer_id != 'XXMI')
-
-    def open_link(self):
-        if Config.Launcher.active_importer == 'WWMI':
-            webbrowser.open('https://gamebanana.com/tools/17252'),
-        elif Config.Launcher.active_importer == 'ZZMI':
-            webbrowser.open('https://gamebanana.com/tools/17467'),
-        elif Config.Launcher.active_importer == 'SRMI':
-            webbrowser.open('https://gamebanana.com/tools/13050'),
-        elif Config.Launcher.active_importer == 'GIMI':
-            webbrowser.open('https://gamebanana.com/tools/10093'),
-        elif Config.Launcher.active_importer == 'HIMI':
-            webbrowser.open('https://gamebanana.com/tools/16498'),
-        elif Config.Launcher.active_importer == 'EFMI':
-            webbrowser.open('https://gamebanana.com/tools/21846'),
-        elif Config.Launcher.active_importer == 'GPMI':
-            webbrowser.open('https://github.com/SpectrumQT/XXMI-Launcher'),
-
-    def get_tooltip(self):
-        return L('top_bar_gamebanana_button_tooltip', '{importer} GameBanana').format(importer=Config.Launcher.active_importer)
-
-
-class DiscordButton(WebResourceButton):
-    def __init__(self, master):
-        super().__init__(
-            x=860,
-            button_image_path='button-resource-discord.png',
-            command=lambda: webbrowser.open('https://discord.com/invite/agmg'),
-            master=master)
-        self.set_tooltip(L('top_bar_discord_button_tooltip', 'AGMG Modding Community Discord'), delay=0.01)
-
-
 class GitHubButton(WebResourceButton):
     def __init__(self, master):
         super().__init__(
             x=930,
             button_image_path='button-resource-github.png',
-            command=lambda: webbrowser.open('https://github.com/SpectrumQT/XXMI-Launcher'),
+            command=lambda: webbrowser.open('https://github.com/tianyiyun128-blip/GPMI'),
             master=master)
-        self.set_tooltip(L('top_bar_github_button_tooltip', 'XXMI Launcher GitHub'), delay=0.01)
+        self.set_tooltip(L('top_bar_github_button_tooltip', 'Project GitHub'), delay=0.01)
 
 
 class DonateButton(WebResourceButton):
@@ -247,19 +96,10 @@ class DonateButton(WebResourceButton):
         super().__init__(
             x=1000,
             button_image_path='button-resource-donate.png',
-            command=self.open_link,
+            command=lambda: None,
             master=master)
-        self.subscribe(Events.Application.LoadImporter, self.handle_load_importer)
-        self.set_tooltip(self.get_tooltip, delay=0.01)
-
-    def handle_load_importer(self, event):
-        self.show(event.importer_id != 'XXMI')
-
-    def open_link(self):
-        Events.Fire(Events.Application.OpenDonationCenter(model_importer=Config.Launcher.active_importer))
-
-    def get_tooltip(self):
-        return L('top_bar_donate_button_tooltip', 'Support {importer}').format(importer=Config.Launcher.active_importer)
+        self.set_disabled(True)
+        self.set_tooltip(L('top_bar_donate_button_tooltip_disabled', 'Sponsor button is temporarily disabled.'), delay=0.01)
 
 
 

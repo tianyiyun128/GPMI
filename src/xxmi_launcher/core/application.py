@@ -25,7 +25,6 @@ from core.locale_manager import L
 from core.package_manager import PackageManager
 
 from core.packages.launcher_package import LauncherPackage
-from core.packages.migoto_package import MigotoPackage
 from core.packages.model_importers.model_importer import ModelImporterPackage
 from core.packages.model_importers.gpmi_package import GPMIPackage
 
@@ -202,11 +201,11 @@ class Application:
 
         # Parse console args
         parser = argparse.ArgumentParser(add_help=False)
-        parser.add_argument('exe_path', nargs='?', default='', help='Path to game .exe file.')
+        parser.add_argument('exe_path', nargs='?', default='', help='Path to the exact Godot game .exe file.')
         parser.add_argument('-h', '--help', '-help', action='store_true',
                             help='Show this help message and exit.')
         parser.add_argument('-x', '--xxmi', type=str,
-                            help='Set active model importer (WWMI/ZZMI/SRMI/GIMI/HIMI/EFMI/GPMI) used by launcher.')
+                            help='Set active model importer. GPMI-only builds accept only GPMI.')
         parser.add_argument('-n', '--nogui', action='store_true',
                             help='Start game with active model importer without showing launcher window.')
         parser.add_argument('-u', '--update', action='store_true',
@@ -252,13 +251,12 @@ class Application:
         # Async query and log OS and hardware info
         self.run_as_thread(system_info.log_system_info)
 
-        # GPMI-only build: keep Launcher + XXMI injector runtime, remove bundled Unity/UE model importers.
+        # GPMI-only build: keep only the launcher shell and the GPMI package.
         Config.Launcher.active_importer = 'GPMI'
         Config.Launcher.enabled_importers = ['GPMI']
 
         self.packages = [
             LauncherPackage(),
-            MigotoPackage(),  # package_name='XXMI'; required by GPMI for 3dmloader.dll injection helper
             GPMIPackage(),
         ]
 
@@ -325,6 +323,8 @@ class Application:
         if open_settings:
             Events.Fire(Events.Application.OpenSettings())
 
+        self.ensure_gpmi_executable_configured()
+
         self.handle_stats()
 
         self.check_threads()
@@ -339,6 +339,79 @@ class Application:
             self.initialize_gui(open_settings=True)
         else:
             settings_frame.open_settings(tab_name=event.tab_name, wait_window=event.wait_window)
+
+    def _current_gpmi_executable(self) -> Optional[Path]:
+        configured = str(getattr(Config.Active.Importer, 'game_folder', '') or '').strip().strip('"')
+        if not configured:
+            return None
+        exe_path = Path(configured)
+        if exe_path.suffix.lower() != '.exe':
+            return None
+        return exe_path
+
+    def _save_gpmi_executable(self, exe_path: Path):
+        exe_path = exe_path.resolve()
+        Config.Active.Importer.game_folder = str(exe_path)
+        Config.Active.Importer.custom_game_exe_name = exe_path.name
+        Config.Config.save()
+
+        # Keep already-created CustomTk variables in sync, otherwise opening Settings
+        # later could save the stale value back over the new executable path.
+        try:
+            import gui.vars as Vars
+            Vars.Active.Importer.game_folder.set(str(exe_path))
+            Vars.Active.Importer.custom_game_exe_name.set(exe_path.name)
+        except Exception:
+            logging.debug('GPMI exe path saved before Vars were available.', exc_info=True)
+
+    def ensure_gpmi_executable_configured(self):
+        if Config.Launcher.active_importer != 'GPMI':
+            return
+
+        exe_path = self._current_gpmi_executable()
+        if exe_path is not None and exe_path.is_file():
+            return
+
+        self.gui.show_messagebox(Events.Application.ShowInfo(
+            modal=True,
+            title='GPMI Setup',
+            message=(
+                'GPMI needs the exact Godot game executable before it can start.\n\n'
+                'Please select the game .exe itself, not the game folder. '
+                'The selected .exe path will be saved as the GPMI target.'
+            ),
+            confirm_text='Select .exe',
+        ))
+
+        try:
+            from customtkinter import filedialog
+            initial = exe_path.parent if exe_path is not None else Paths.App.Root
+            selected = filedialog.askopenfilename(
+                parent=self.gui,
+                initialdir=str(initial),
+                title='Select Godot Game Executable',
+                filetypes=[('Applications', '*.exe'), ('All files', '*.*')],
+            )
+        except Exception as e:
+            logging.exception(e)
+            Events.Fire(Events.Application.OpenSettings(tab_name='GENERAL_TAB'))
+            return
+
+        if not selected:
+            Events.Fire(Events.Application.OpenSettings(tab_name='GENERAL_TAB'))
+            return
+
+        selected_path = Path(selected)
+        if selected_path.suffix.lower() != '.exe' or not selected_path.is_file():
+            self.gui.show_messagebox(Events.Application.ShowError(
+                modal=True,
+                title='Invalid GPMI Target',
+                message='Please select a valid .exe file. Folder paths are not accepted by GPMI.'
+            ))
+            Events.Fire(Events.Application.OpenSettings(tab_name='GENERAL_TAB'))
+            return
+
+        self._save_gpmi_executable(selected_path)
 
     def load_config(self):
         cfg_backup_path = Paths.App.Backups / Config.Config.config_path.name
@@ -383,17 +456,16 @@ class Application:
         return importer_name
 
     def get_importer_from_path(self, path: Path):
-        if path.is_file() or path.suffix == '.exe':
-            game_folder = Path(path).parent
-        else:
-            game_folder = path
-
+        # GPMI accepts only an explicit executable path. Do not collapse the input
+        # to its parent folder, because that revives the old XXMI multi-exe scan.
         for package_name in ['GPMI']:
             package = self.package_manager.get_package(package_name)
             if not isinstance(package, ModelImporterPackage):
                 raise ValueError(f'Package {package.metadata.package_name} is not ModelImporterPackage!')
             try:
-                game_path = package.validate_game_path(game_folder)
+                Config.Importers.__dict__[package_name].Importer.game_folder = str(path)
+                Config.Importers.__dict__[package_name].Importer.custom_game_exe_name = Path(path).name
+                game_path = package.validate_game_path(path)
                 game_exe_path = package.validate_game_exe_path(game_path)
             except Exception:
                 continue
@@ -416,7 +488,8 @@ class Application:
 
             self.args.nogui = True
             self.args.xxmi = importer_name
-            Config.Importers.__dict__[importer_name].Importer.game_folder = str(game_path)
+            Config.Importers.__dict__[importer_name].Importer.game_folder = str(game_exe_path)
+            Config.Importers.__dict__[importer_name].Importer.custom_game_exe_name = game_exe_path.name
 
         if self.args.xxmi:
             # Active model importer override is supplied via command line arg `--xxmi`
@@ -563,8 +636,11 @@ class Application:
             ))
 
     def get_launch_counters_from_log(self, exclude_failed = True):
-        with (open(Paths.App.Root / 'XXMI Launcher Log.txt', 'r', encoding='utf-8', errors='ignore') as f):
-            launch_counters = { 'GIMI': 0, 'SRMI': 0,  'WWMI': 0, 'ZZMI': 0, 'HIMI': 0, 'EFMI': 0, 'GPMI': 0 }
+        log_path = Paths.App.Root / 'GPMI Log.txt'
+        if not log_path.is_file():
+            log_path = Paths.App.Root / 'XXMI Launcher Log.txt'
+        with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+            launch_counters = {'GPMI': 0}
 
             def parse_active_package(line):
                 if 'Loaded package:' in line:
@@ -631,36 +707,9 @@ class Application:
         return launch_counters
 
     def handle_stats(self):
-        # Show 1-time credits notification for the first model importer that reaches 100 launches
-        if not Config.Launcher.credits_shown:
-            # Check flag file to handle possible config reset
-            flag_path = Paths.App.Resources / 'Security' / 'Credits.lock'
-            if flag_path.is_file():
-                Config.Launcher.credits_shown = True
-                return
-
-            launch_counters = self.get_launch_counters()
-
-            most_launched_model_importer = max(launch_counters, key=launch_counters.get)
-            max_launch_count = launch_counters[most_launched_model_importer]
-
-            if max_launch_count >= 100 and most_launched_model_importer == Config.Launcher.active_importer:
-                # Set flag in config to avoid excessive FS calls
-                Config.Launcher.credits_shown = True
-                # Create flag file to prevent notification spam on config reset
-                try:
-                    flag_path.touch()
-                except Exception as e:
-                    logging.debug(f'Failed to create Credits.lock: {e}')
-                # Show credits notification
-                try:
-                    Events.Fire(Events.Application.OpenDonationCenter(
-                        mode='POPUP',
-                        model_importer=most_launched_model_importer,
-                        launch_count=max_launch_count
-                    ))
-                except Exception as e:
-                    logging.debug(f'Failed to show credits notification: {e}')
+        # Donation/credits popups belong to the original multi-XPMI launcher and
+        # are disabled in this GPMI-only build.
+        return
 
     def launch(self):
         if self.is_locked:
