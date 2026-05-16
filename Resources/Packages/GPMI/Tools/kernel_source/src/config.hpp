@@ -15,6 +15,9 @@ struct Rule
     uint64_t hash = 0;
     std::filesystem::path replacement;
     std::string note;
+    std::string character_id;
+    std::string outfit_id = "default";
+    std::string slot;
     mutable std::optional<PtrTex> cached_texture;
 };
 
