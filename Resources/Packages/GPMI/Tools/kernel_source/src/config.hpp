@@ -13,6 +13,10 @@ struct Rule
 {
     bool enabled = true;
     uint64_t hash = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t gpu_format = 0;
+    std::string hash_variant;
     std::filesystem::path replacement;
     std::string note;
     std::string character_id;
