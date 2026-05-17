@@ -150,9 +150,15 @@ void __fastcall object_callp_detour(void *return_variant,
     log().info("unit call matched: " + unit_call->logical_path +
                " -> " + rule->replacement.string());
     if (replace_return_with_texture(return_variant, rule->replacement))
-        log().info("unit return replaced: " + unit_call->logical_path);
+    {
+        log().info("unit return replaced by native texture loader: " + unit_call->logical_path);
+    }
     else
-        log().warn("unit return replacement failed: " + unit_call->logical_path);
+    {
+        log().warn("unit return not replaced by native loader: " + unit_call->logical_path +
+                   "; manifest matched and file exists. If the GodotHook bridge is installed, "
+                   "the original ImageLoader return may already be supplied from in-memory cache.");
+    }
 }
 }
 
@@ -205,7 +211,8 @@ bool install_unit_hook(const std::filesystem::path &profile_dir,
     if (abi.verbose_calls)
         log().info("verbose_calls enabled; Object::callp method names will be sampled");
     if (!abi.texture_loader)
-        log().warn("texture loader thunk is not configured; hook will log matches but cannot replace return values");
+        log().warn("native texture_loader_rva/abs is not configured; native return rewriting is disabled. "
+                   "Install the no-MOD GodotHook bridge or provide a verified native texture loader thunk.");
     return true;
 }
 
