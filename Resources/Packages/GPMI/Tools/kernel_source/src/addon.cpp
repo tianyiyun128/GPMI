@@ -38,8 +38,9 @@ std::filesystem::path g_base_dir;
 bool g_loaded = false;
 bool g_inside_replacement_upload = false;
 uint64_t g_replace_count = 0;
-uint64_t g_dump_count = 0;
 uint64_t g_seen_count = 0;
+uint64_t g_trace_count = 0;
+constexpr uint64_t k_max_trace_logs = 1200;
 
 thread_local PtrTex g_tls_tex;
 thread_local std::vector<uint8_t> g_tls_scratch;
@@ -73,67 +74,6 @@ bool should_consider(const reshade::api::resource_desc &desc)
            desc.texture.height >= cfg.min_height &&
            desc.texture.samples <= 1 &&
            is_supported_color_format(desc.texture.format);
-}
-
-std::filesystem::path dump_path_for(uint64_t hash)
-{
-    return config_store().current().base_dir / "dumps" / (hash_to_hex(hash) + ".ptrtex");
-}
-
-bool copy_upload_to_ptrtex(const reshade::api::resource_desc &desc,
-                           const reshade::api::subresource_data &data,
-                           PtrTex &out)
-{
-    const uint32_t bpp = bytes_per_pixel(desc.texture.format);
-    if (bpp != 4 || data.data == nullptr)
-        return false;
-    const uint32_t row_bytes = desc.texture.width * 4;
-    if (data.row_pitch < row_bytes)
-        return false;
-
-    out.width = desc.texture.width;
-    out.height = desc.texture.height;
-    out.format = (desc.texture.format == reshade::api::format::b8g8r8a8_unorm ||
-                  desc.texture.format == reshade::api::format::b8g8r8a8_unorm_srgb)
-                     ? PtrTexFormat::bgra8
-                     : PtrTexFormat::rgba8;
-    out.row_pitch = row_bytes;
-    out.pixels.resize(static_cast<size_t>(out.height) * row_bytes);
-
-    const auto *src = static_cast<const uint8_t *>(data.data);
-    for (uint32_t y = 0; y < out.height; ++y)
-        std::memcpy(out.pixels.data() + static_cast<size_t>(y) * row_bytes,
-                    src + static_cast<size_t>(y) * data.row_pitch,
-                    row_bytes);
-    return true;
-}
-
-void dump_unknown_if_needed(uint64_t hash,
-                            const reshade::api::resource_desc &desc,
-                            const reshade::api::subresource_data &data)
-{
-    const auto &cfg = config_store().current();
-    if (!cfg.dump_unknown || hash == 0 || config_store().find(hash) != nullptr)
-        return;
-
-    const auto path = dump_path_for(hash);
-    if (std::filesystem::exists(path))
-        return;
-
-    PtrTex tex;
-    if (!copy_upload_to_ptrtex(desc, data, tex))
-        return;
-
-    std::string err;
-    if (save_ptrtex(path, tex, err))
-    {
-        ++g_dump_count;
-        log().info("dumped unknown texture " + hash_to_hex(hash) + " -> " + path.string());
-    }
-    else
-    {
-        log().warn("dump failed: " + err);
-    }
 }
 
 bool load_rule_texture(const Rule &rule, PtrTex &out)
@@ -181,6 +121,61 @@ bool build_replacement_upload(const Rule &rule,
     return make_subresource_for_format(texture_cache, desc.texture.format, scratch, upload);
 }
 
+uint32_t region_width(const reshade::api::resource_desc &desc, const reshade::api::subresource_box *box)
+{
+    if (box != nullptr && box->right > box->left)
+        return box->right - box->left;
+    return desc.texture.width;
+}
+
+uint32_t region_height(const reshade::api::resource_desc &desc, const reshade::api::subresource_box *box)
+{
+    if (box != nullptr && box->bottom > box->top)
+        return box->bottom - box->top;
+    return desc.texture.height;
+}
+
+void trace_seen_upload(const char *stage,
+                       uint64_t hash,
+                       const reshade::api::resource_desc &desc,
+                       uint32_t subresource,
+                       const reshade::api::subresource_box *box,
+                       const Rule *rule)
+{
+    if (g_trace_count >= k_max_trace_logs)
+        return;
+
+    ++g_trace_count;
+    const uint32_t upload_width = region_width(desc, box);
+    const uint32_t upload_height = region_height(desc, box);
+
+    log().info(std::string("seen texture ") + stage +
+               ": hash=" + hash_to_hex(hash) +
+               ", target=" + std::to_string(desc.texture.width) + "x" + std::to_string(desc.texture.height) +
+               ", upload=" + std::to_string(upload_width) + "x" + std::to_string(upload_height) +
+               ", format=" + std::to_string(static_cast<uint32_t>(desc.texture.format)) +
+               ", subresource=" + std::to_string(subresource) +
+               ", rule=" + (rule != nullptr ? "yes" : "no"));
+}
+
+void trace_copy_event(const char *stage,
+                      const reshade::api::resource_desc &desc,
+                      uint32_t subresource,
+                      const reshade::api::subresource_box *box,
+                      const std::string &detail)
+{
+    if (g_trace_count >= k_max_trace_logs)
+        return;
+
+    ++g_trace_count;
+    log().info(std::string("texture upload ") + stage +
+               ": target=" + std::to_string(desc.texture.width) + "x" + std::to_string(desc.texture.height) +
+               ", upload=" + std::to_string(region_width(desc, box)) + "x" + std::to_string(region_height(desc, box)) +
+               ", format=" + std::to_string(static_cast<uint32_t>(desc.texture.format)) +
+               ", subresource=" + std::to_string(subresource) +
+               ", " + detail);
+}
+
 bool try_prepare_initial_replacement(const reshade::api::resource_desc &desc,
                                      reshade::api::subresource_data *initial_data)
 {
@@ -193,11 +188,9 @@ bool try_prepare_initial_replacement(const reshade::api::resource_desc &desc,
 
     ++g_seen_count;
     const Rule *rule = config_store().find(hash);
+    trace_seen_upload("initial", hash, desc, 0, nullptr, rule);
     if (rule == nullptr)
-    {
-        dump_unknown_if_needed(hash, desc, initial_data[0]);
         return false;
-    }
 
     if (!build_replacement_upload(*rule, desc, g_tls_tex, g_tls_scratch, g_tls_subresource))
         return false;
@@ -224,11 +217,9 @@ bool try_replace_update(reshade::api::device *device,
 
     ++g_seen_count;
     const Rule *rule = config_store().find(hash);
+    trace_seen_upload("update", hash, desc, subresource, box, rule);
     if (rule == nullptr)
-    {
-        dump_unknown_if_needed(hash, desc, data);
         return false;
-    }
 
     PtrTex tex;
     std::vector<uint8_t> scratch;
@@ -258,11 +249,9 @@ void try_replace_mapped_data(const reshade::api::resource_desc &desc,
 
     ++g_seen_count;
     const Rule *rule = config_store().find(hash);
+    trace_seen_upload("mapped", hash, desc, subresource, nullptr, rule);
     if (rule == nullptr)
-    {
-        dump_unknown_if_needed(hash, desc, mapped);
         return;
-    }
 
     PtrTex tex;
     std::vector<uint8_t> scratch;
@@ -280,6 +269,122 @@ void try_replace_mapped_data(const reshade::api::resource_desc &desc,
 
     ++g_replace_count;
     log().info("mapped texture replaced: " + hash_to_hex(hash) + " -> " + rule->replacement.string());
+}
+
+bool try_replace_update_command(reshade::api::command_list *cmd_list,
+                                const reshade::api::subresource_data &data,
+                                reshade::api::resource dest,
+                                uint32_t dest_subresource,
+                                const reshade::api::subresource_box *dest_box)
+{
+    if (g_inside_replacement_upload || data.data == nullptr || cmd_list == nullptr)
+        return false;
+
+    reshade::api::device *device = cmd_list->get_device();
+    if (device == nullptr)
+        return false;
+
+    const auto desc = device->get_resource_desc(dest);
+    if (!should_consider(desc))
+        return false;
+
+    const uint64_t hash = hash_texture_upload(desc, data, dest_subresource, dest_box);
+    if (hash == 0)
+        return false;
+
+    ++g_seen_count;
+    const Rule *rule = config_store().find(hash);
+    trace_seen_upload("command-update", hash, desc, dest_subresource, dest_box, rule);
+    if (rule == nullptr)
+        return false;
+
+    PtrTex tex;
+    std::vector<uint8_t> scratch;
+    reshade::api::subresource_data upload{};
+    if (!build_replacement_upload(*rule, desc, tex, scratch, upload))
+        return false;
+
+    g_inside_replacement_upload = true;
+    cmd_list->update_texture_region(upload, dest, dest_subresource, dest_box);
+    g_inside_replacement_upload = false;
+
+    ++g_replace_count;
+    log().info("command update_texture_region replaced: " + hash_to_hex(hash) + " -> " + rule->replacement.string());
+    return true;
+}
+
+bool try_replace_copy_buffer_to_texture(reshade::api::command_list *cmd_list,
+                                        reshade::api::resource source,
+                                        uint64_t source_offset,
+                                        uint32_t row_length,
+                                        uint32_t slice_height,
+                                        reshade::api::resource dest,
+                                        uint32_t dest_subresource,
+                                        const reshade::api::subresource_box *dest_box)
+{
+    UNREFERENCED_PARAMETER(slice_height);
+
+    if (g_inside_replacement_upload || cmd_list == nullptr)
+        return false;
+
+    reshade::api::device *device = cmd_list->get_device();
+    if (device == nullptr)
+        return false;
+
+    const auto desc = device->get_resource_desc(dest);
+    if (!should_consider(desc))
+        return false;
+
+    const uint32_t bpp = bytes_per_pixel(desc.texture.format);
+    const uint32_t width = region_width(desc, dest_box);
+    const uint32_t height = region_height(desc, dest_box);
+    if (bpp == 0 || width == 0 || height == 0)
+        return false;
+
+    const uint32_t row_pitch = (row_length != 0 ? row_length : width) * bpp;
+    const uint32_t row_bytes = width * bpp;
+    if (row_pitch < row_bytes)
+        return false;
+
+    const uint64_t required_size = static_cast<uint64_t>(row_pitch) * (height - 1) + row_bytes;
+    void *mapped = nullptr;
+    if (!device->map_buffer_region(source, source_offset, required_size, reshade::api::map_access::read_only, &mapped) || mapped == nullptr)
+    {
+        trace_copy_event("copy-buffer-to-texture", desc, dest_subresource, dest_box,
+                         "source map failed, offset=" + std::to_string(source_offset) +
+                         ", row_length=" + std::to_string(row_length));
+        return false;
+    }
+
+    reshade::api::subresource_data data{};
+    data.data = mapped;
+    data.row_pitch = row_pitch;
+    data.slice_pitch = row_pitch * height;
+
+    const uint64_t hash = hash_texture_upload(desc, data, dest_subresource, dest_box);
+    device->unmap_buffer_region(source);
+    if (hash == 0)
+        return false;
+
+    ++g_seen_count;
+    const Rule *rule = config_store().find(hash);
+    trace_seen_upload("copy-buffer-to-texture", hash, desc, dest_subresource, dest_box, rule);
+    if (rule == nullptr)
+        return false;
+
+    PtrTex tex;
+    std::vector<uint8_t> scratch;
+    reshade::api::subresource_data upload{};
+    if (!build_replacement_upload(*rule, desc, tex, scratch, upload))
+        return false;
+
+    g_inside_replacement_upload = true;
+    cmd_list->update_texture_region(upload, dest, dest_subresource, dest_box);
+    g_inside_replacement_upload = false;
+
+    ++g_replace_count;
+    log().info("copy_buffer_to_texture replaced: " + hash_to_hex(hash) + " -> " + rule->replacement.string());
+    return true;
 }
 }
 }
@@ -384,14 +489,21 @@ static bool on_update_texture_region_command(reshade::api::command_list *cmd_lis
                                              uint32_t dest_subresource,
                                              const reshade::api::subresource_box *dest_box)
 {
-    // Deferred D3D11 path. A full implementation should obtain the device from cmd_list
-    // and perform the same replacement upload as on_update_texture_region. Kept as a safe no-op in MVP.
-    UNREFERENCED_PARAMETER(cmd_list);
-    UNREFERENCED_PARAMETER(data);
-    UNREFERENCED_PARAMETER(dest);
-    UNREFERENCED_PARAMETER(dest_subresource);
-    UNREFERENCED_PARAMETER(dest_box);
-    return false;
+    std::scoped_lock lock(ptr::g_mutex);
+    return ptr::try_replace_update_command(cmd_list, data, dest, dest_subresource, dest_box);
+}
+
+static bool on_copy_buffer_to_texture(reshade::api::command_list *cmd_list,
+                                      reshade::api::resource source,
+                                      uint64_t source_offset,
+                                      uint32_t row_length,
+                                      uint32_t slice_height,
+                                      reshade::api::resource dest,
+                                      uint32_t dest_subresource,
+                                      const reshade::api::subresource_box *dest_box)
+{
+    std::scoped_lock lock(ptr::g_mutex);
+    return ptr::try_replace_copy_buffer_to_texture(cmd_list, source, source_offset, row_length, slice_height, dest, dest_subresource, dest_box);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
@@ -408,6 +520,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
         reshade::register_event<reshade::addon_event::destroy_resource>(&on_destroy_resource);
         reshade::register_event<reshade::addon_event::update_texture_region>(&on_update_texture_region);
         reshade::register_event<reshade::addon_event::update_texture_region_command>(&on_update_texture_region_command);
+        reshade::register_event<reshade::addon_event::copy_buffer_to_texture>(&on_copy_buffer_to_texture);
         reshade::register_event<reshade::addon_event::map_texture_region>(&on_map_texture_region);
         reshade::register_event<reshade::addon_event::unmap_texture_region>(&on_unmap_texture_region);
         break;

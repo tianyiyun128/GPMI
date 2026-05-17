@@ -113,7 +113,6 @@ void ConfigStore::load_ini(const std::filesystem::path &path)
                 if (!ec) config_.base_dir = profile;
                 else config_.base_dir = path.parent_path() / value;
             }
-            else if (key == "dump_unknown") config_.dump_unknown = to_bool(value, config_.dump_unknown);
             else if (key == "min_width") config_.min_width = static_cast<uint32_t>(std::stoul(value));
             else if (key == "min_height") config_.min_height = static_cast<uint32_t>(std::stoul(value));
             else if (key == "hash_db") config_.hash_db_path = value;
@@ -132,7 +131,6 @@ void ConfigStore::load_hash_db(const std::filesystem::path &path)
     }
 
     config_.enabled = json_bool_field(json, "enabled", config_.enabled);
-    config_.dump_unknown = json_bool_field(json, "dump_unknown", config_.dump_unknown);
     config_.min_width = json_uint_field(json, "min_width", config_.min_width);
     config_.min_height = json_uint_field(json, "min_height", config_.min_height);
 

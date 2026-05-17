@@ -1,19 +1,66 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from core.gpmi.profile import infer_rule_identity, normalize_hash, sanitize_identifier
 from core.gpmi.ptrtex import png_to_ptrtex
 
 REQUIRED_SLOTS = ("Unit", "Unit_H")
 SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tga"}
+GPMI_VERSION = "0.4.0"
 USER_MODS_DIR = "Mods"
 RUNTIME_MODS_DIR = "RuntimeMods"
 META_FILE = "mod_meta.json"
 HASH_DB_FILE = "hash_db.json"
+SOURCE_HASH_DB_FILE = HASH_DB_FILE
+RUNTIME_HASH_DB_FILE = "runtime_hash_db.json"
+
+
+def sanitize_identifier(value: str, fallback: str = "default") -> str:
+    text = str(value or "").strip()
+    safe = "".join(ch if ch.isalnum() or ch in "._- " else "_" for ch in text).strip()
+    safe = "_".join(safe.split())
+    return safe or fallback
+
+
+def normalize_hash(hash_text: str) -> str:
+    value = hash_text.strip().lower()
+    if value.startswith("0x"):
+        value = value[2:]
+    value = "".join(ch for ch in value if ch in "0123456789abcdef")
+    if not value:
+        raise ValueError("hash is empty")
+    if len(value) > 16:
+        raise ValueError("hash is longer than 64 bits")
+    return "0x" + value.rjust(16, "0")
+
+
+def infer_rule_identity(note: str, replacement: str = "") -> Tuple[str, str, str]:
+    source = (note or "").replace("\\", "/").strip("/")
+    parts = [part for part in source.split("/") if part]
+    slot = parts[0] if len(parts) >= 1 else "Unit"
+    raw_character = parts[1] if len(parts) >= 2 else "Unknown"
+    outfit = parts[2] if len(parts) >= 3 else "default"
+
+    if raw_character == "Unknown" and replacement:
+        stem = Path(replacement).stem
+        if stem.endswith("_default"):
+            stem = stem[:-8]
+        raw_character = stem or raw_character
+
+    match = re.match(r"^(.+)_([0-9]+)$", raw_character)
+    if match:
+        raw_character = match.group(1)
+        outfit = match.group(2)
+
+    return (
+        sanitize_identifier(raw_character, "Unknown"),
+        sanitize_identifier(outfit, "default"),
+        sanitize_identifier(slot, "Unit"),
+    )
 
 
 def character_id(value: str) -> str:
@@ -28,18 +75,45 @@ def game_profile_dir(game_exe_path: Path) -> Path:
     return Path(game_exe_path).resolve().parent / "GPMI"
 
 
+def write_package_ini(importer_path: Path) -> None:
+    common = (
+        "[core]\n"
+        "enabled=true\n"
+        "min_width=32\n"
+        "min_height=32\n"
+        f"hash_db={RUNTIME_HASH_DB_FILE}\n"
+        "log_file=PortraitHashReplace.log\n"
+    )
+    (importer_path / "ptr_config.ini").write_text(common + "profile_dir=.\n", encoding="utf-8")
+    core_dir = importer_path / "Core/GPMI"
+    core_dir.mkdir(parents=True, exist_ok=True)
+    (core_dir / "ptr_config.ini").write_text(common + "profile_dir=../..\n", encoding="utf-8")
+
+
+def ensure_package_profile(importer_path: Path) -> None:
+    for rel in ["Core/GPMI", "Core/GPMI/Addons", "Tools"]:
+        (importer_path / rel).mkdir(parents=True, exist_ok=True)
+    write_package_ini(importer_path)
+
+
 def ensure_game_profile(profile_dir: Path) -> None:
     profile_dir.mkdir(parents=True, exist_ok=True)
-    for rel in [USER_MODS_DIR, RUNTIME_MODS_DIR, "Dumps"]:
+    for rel in [USER_MODS_DIR, RUNTIME_MODS_DIR]:
         (profile_dir / rel).mkdir(parents=True, exist_ok=True)
     if not (profile_dir / META_FILE).exists():
         save_mod_meta(profile_dir, default_meta())
+    if not (profile_dir / RUNTIME_HASH_DB_FILE).exists():
+        save_runtime_hash_db(profile_dir, {
+            "enabled": True,
+            "min_width": 32,
+            "min_height": 32,
+            "rules": [],
+        })
     write_runtime_ini(profile_dir)
 
 
 def write_runtime_ini(
     profile_dir: Path,
-    dump_unknown: bool = True,
     min_width: int = 32,
     min_height: int = 32,
     mirror_dirs: Optional[List[Path]] = None,
@@ -49,11 +123,10 @@ def write_runtime_ini(
     common = (
         "[core]\n"
         f"enabled=true\n"
-        f"dump_unknown={'true' if dump_unknown else 'false'}\n"
         f"min_width={int(min_width)}\n"
         f"min_height={int(min_height)}\n"
         f"profile_dir={profile_abs}\n"
-        f"hash_db={HASH_DB_FILE}\n"
+        f"hash_db={RUNTIME_HASH_DB_FILE}\n"
         f"log_file=PortraitHashReplace.log\n"
     )
     (profile_dir / "ptr_config.ini").write_text(common, encoding="utf-8")
@@ -89,6 +162,11 @@ def load_mod_meta(profile_dir: Path) -> dict:
 def save_mod_meta(profile_dir: Path, meta: dict) -> None:
     profile_dir.mkdir(parents=True, exist_ok=True)
     (profile_dir / META_FILE).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def save_runtime_hash_db(profile_dir: Path, data: dict) -> None:
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    (profile_dir / RUNTIME_HASH_DB_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _relative(profile_dir: Path, path: Path) -> str:
@@ -287,18 +365,19 @@ def _selected_outfit(meta: dict, cid: str) -> Optional[dict]:
 def build_runtime_hash_db(profile_dir: Path) -> dict:
     """Merge externally generated hashes with the selected imported outfit metadata.
 
-    The external tool owns the hash list in GPMI/hash_db.json. GPMI only rewrites
-    each top-level rule's enabled/replacement/character_id/outfit_id/slot fields.
-    A character is enabled only when both Unit and Unit_H hashes exist and the
-    selected imported outfit has both runtime ptrtex files.
+    The in-game collector owns GPMI/hash_db.json. GPMI reads that source file and
+    writes GPMI/runtime_hash_db.json for the DLL. A character is enabled only when
+    both Unit and Unit_H hashes exist and the selected imported outfit has both
+    runtime ptrtex files.
     """
-    hash_db_path = profile_dir / HASH_DB_FILE
-    if not hash_db_path.is_file():
-        raise FileNotFoundError(f"hash_db.json not found: {hash_db_path}")
-    data = json.loads(hash_db_path.read_text(encoding="utf-8"))
+    source_hash_db_path = profile_dir / SOURCE_HASH_DB_FILE
+    if not source_hash_db_path.is_file():
+        raise FileNotFoundError(f"hash_db.json not found: {source_hash_db_path}")
+    data = json.loads(source_hash_db_path.read_text(encoding="utf-8"))
     rules = data.get("rules", [])
     if not isinstance(rules, list):
         raise ValueError("hash_db.json field 'rules' must be a list")
+    data.pop("dump_unknown", None)
 
     meta = load_mod_meta(profile_dir)
     hash_slots: Dict[str, set] = {}
@@ -353,17 +432,18 @@ def build_runtime_hash_db(profile_dir: Path) -> dict:
 
     data["gpmi_generated"] = {
         "updated_at": int(time.time()),
+        "source_hash_db": SOURCE_HASH_DB_FILE,
+        "runtime_hash_db": RUNTIME_HASH_DB_FILE,
         "selected_outfits": meta.get("selected_outfits", {}),
         "enabled_rules": enabled_count,
         "disabled_rules": disabled_count,
         "issues": {key: sorted(set(value)) for key, value in issues.items()},
     }
-    hash_db_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    save_runtime_hash_db(profile_dir, data)
     return data["gpmi_generated"]
 
 
-def summarize_hash_db(profile_dir: Path) -> dict:
-    path = profile_dir / HASH_DB_FILE
+def _summarize_db(path: Path) -> dict:
     if not path.is_file():
         return {"exists": False, "rules": 0, "enabled": 0, "characters": 0}
     try:
@@ -387,4 +467,18 @@ def summarize_hash_db(profile_dir: Path) -> dict:
         "enabled": enabled,
         "characters": len(characters),
         "generated": data.get("gpmi_generated", {}) if isinstance(data, dict) else {},
+    }
+
+
+def summarize_hash_db(profile_dir: Path) -> dict:
+    source = _summarize_db(profile_dir / SOURCE_HASH_DB_FILE)
+    runtime = _summarize_db(profile_dir / RUNTIME_HASH_DB_FILE)
+    return {
+        "source": source,
+        "runtime": runtime,
+        "exists": source.get("exists", False),
+        "rules": source.get("rules", 0),
+        "enabled": runtime.get("enabled", 0),
+        "characters": source.get("characters", 0),
+        "generated": runtime.get("generated", {}),
     }

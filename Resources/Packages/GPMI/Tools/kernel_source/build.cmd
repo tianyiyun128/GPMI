@@ -30,8 +30,13 @@ if errorlevel 1 (
 
 where cmake.exe >nul 2>nul
 if errorlevel 1 (
-    echo [GPMI][ERROR] cmake.exe not found in PATH.
-    echo [GPMI][ERROR] Install CMake, or install the C++ CMake tools for Windows component in Visual Studio Installer.
+    call :SetupCMake
+    if errorlevel 1 exit /b 1
+)
+
+where cmake.exe >nul 2>nul
+if errorlevel 1 (
+    echo [GPMI][ERROR] CMake setup completed, but cmake.exe is still not available.
     exit /b 1
 )
 
@@ -91,10 +96,10 @@ call :FindOutput "%BUILD_DIR%"
 if errorlevel 1 exit /b 1
 
 if not exist "..\..\Core\GPMI" mkdir "..\..\Core\GPMI"
-copy /Y "%OUTPUT_ADDON%" "..\..\Core\GPMI\PortraitHashReplace.addon64" >nul
+call :CopyWithRetry "%OUTPUT_ADDON%" "..\..\Core\GPMI\PortraitHashReplace.addon64"
 if errorlevel 1 exit /b 1
 if not exist "..\..\Core\GPMI\Addons" mkdir "..\..\Core\GPMI\Addons"
-copy /Y "%OUTPUT_ADDON%" "..\..\Core\GPMI\Addons\PortraitHashReplace.addon64" >nul
+call :CopyWithRetry "%OUTPUT_ADDON%" "..\..\Core\GPMI\Addons\PortraitHashReplace.addon64"
 if errorlevel 1 exit /b 1
 
 echo [GPMI] Done.
@@ -157,6 +162,75 @@ if not defined OUTPUT_ADDON (
     exit /b 1
 )
 exit /b 0
+
+:CopyWithRetry
+set "COPY_SRC=%~1"
+set "COPY_DST=%~2"
+for /L %%R in (1,1,8) do (
+    copy /Y "%COPY_SRC%" "%COPY_DST%" >nul 2>nul
+    if not errorlevel 1 exit /b 0
+    echo [GPMI][WARN] Copy failed, retry %%R/8:
+    echo [GPMI][WARN]   %COPY_DST%
+    ping -n 2 127.0.0.1 >nul
+)
+echo [GPMI][ERROR] Could not copy output. Close the game/launcher if it is using:
+echo [GPMI][ERROR]   %COPY_DST%
+exit /b 1
+
+:SetupCMake
+echo [GPMI] cmake.exe not found in PATH. Trying Visual Studio bundled CMake...
+
+if defined CMAKE_EXE (
+    if exist "%CMAKE_EXE%" (
+        echo [GPMI] Using CMAKE_EXE override:
+        echo [GPMI]   %CMAKE_EXE%
+        set "PATH=%~dp0;%PATH%"
+        for %%D in ("%CMAKE_EXE%") do set "PATH=%%~dpD;%PATH%"
+        exit /b 0
+    ) else (
+        echo [GPMI][WARN] CMAKE_EXE is set but file does not exist:
+        echo [GPMI][WARN]   %CMAKE_EXE%
+    )
+)
+
+if defined VSINSTALL (
+    if exist "%VSINSTALL%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" (
+        set "PATH=%VSINSTALL%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%"
+        exit /b 0
+    )
+)
+
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if exist "%VSWHERE%" (
+    for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -property installationPath`) do set "CMAKE_VSINSTALL=%%i"
+    if defined CMAKE_VSINSTALL (
+        if exist "%CMAKE_VSINSTALL%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" (
+            echo [GPMI] Using Visual Studio bundled CMake:
+            echo [GPMI]   %CMAKE_VSINSTALL%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin
+            set "PATH=%CMAKE_VSINSTALL%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%"
+            exit /b 0
+        )
+    )
+)
+
+for %%P in (
+    "%ProgramFiles%\Microsoft Visual Studio\18\Insiders\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+    "%ProgramFiles%\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+    "%ProgramFiles%\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+    "%ProgramFiles%\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+    "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+) do (
+    if exist "%%~P\cmake.exe" (
+        echo [GPMI] Using CMake:
+        echo [GPMI]   %%~P
+        set "PATH=%%~P;%PATH%"
+        exit /b 0
+    )
+)
+
+echo [GPMI][ERROR] cmake.exe not found.
+echo [GPMI][ERROR] Install CMake, or install the C++ CMake tools for Windows component in Visual Studio Installer.
+exit /b 1
 
 :SetupMSVC
 echo [GPMI] MSVC environment not detected. Trying to locate vcvars64.bat...

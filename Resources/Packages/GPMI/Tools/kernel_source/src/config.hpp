@@ -24,11 +24,10 @@ struct Rule
 struct Config
 {
     bool enabled = true;
-    bool dump_unknown = true;
     uint32_t min_width = 32;
     uint32_t min_height = 32;
     std::filesystem::path base_dir;
-    std::filesystem::path hash_db_path = "hash_db.json";
+    std::filesystem::path hash_db_path = "runtime_hash_db.json";
     std::filesystem::path log_file = "PortraitHashReplace.log";
     std::unordered_map<uint64_t, Rule> rules;
 };

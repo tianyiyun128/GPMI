@@ -14,7 +14,17 @@ from core.locale_manager import L
 from core.package_manager import PackageMetadata
 from core.packages.migoto_package import MigotoManagerConfig
 from core.packages.model_importers.model_importer import ModelImporterConfig, ModelImporterPackage
-from core.gpmi.profile import GPMI_VERSION, ensure_profile, load_hash_db, write_runtime_ini
+from core.gpmi.mods import (
+    GPMI_VERSION,
+    HASH_DB_FILE,
+    META_FILE,
+    RUNTIME_HASH_DB_FILE,
+    build_runtime_hash_db,
+    ensure_game_profile,
+    ensure_package_profile,
+    game_profile_dir,
+    write_runtime_ini as write_game_runtime_ini,
+)
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +35,7 @@ class GPMIConfig(ModelImporterConfig):
 
     GPMI keeps the XXMI launcher shell, but the runtime path is different:
     a ReShade add-on hashes uploaded textures and replaces matching uploads from a
-    local hash_db.json profile. The original game executable is not modified.
+    runtime_hash_db.json profile. The original game executable is not modified.
     """
     game_exe_names: List[str] = field(default_factory=lambda: [])
     game_folder_names: List[str] = field(default_factory=lambda: [])
@@ -41,7 +51,6 @@ class GPMIConfig(ModelImporterConfig):
     custom_game_exe_name: str = ''
     reshade_dll_path: str = ''
     addon_dll_path: str = ''
-    dump_unknown: bool = True
     min_width: int = 32
     min_height: int = 32
     ptr_bgra_import: bool = False
@@ -105,7 +114,7 @@ class GPMIPackage(ModelImporterPackage):
 
     def get_installed_version(self):
         try:
-            ensure_profile(Config.Importers.GPMI.Importer.importer_path)
+            ensure_package_profile(Config.Importers.GPMI.Importer.importer_path)
             return GPMI_VERSION
         except Exception:
             log.exception('Failed to initialize GPMI profile')
@@ -113,11 +122,11 @@ class GPMIPackage(ModelImporterPackage):
 
     def install_latest_version(self, clean):
         Events.Fire(Events.PackageManager.InitializeInstallation())
-        ensure_profile(Config.Active.Importer.importer_path)
+        ensure_package_profile(Config.Active.Importer.importer_path)
 
     def validate_package_files(self):
-        ensure_profile(Config.Active.Importer.importer_path)
-        Paths.verify_path(Config.Active.Importer.importer_path / 'Mods')
+        ensure_package_profile(Config.Active.Importer.importer_path)
+        Paths.verify_path(Config.Active.Importer.importer_path / 'Core/GPMI')
 
     def create_shortcut(self):
         # Generic Godot targets do not have a stable executable name, so GPMI avoids
@@ -125,12 +134,12 @@ class GPMIPackage(ModelImporterPackage):
         Config.Active.Importer.shortcut_deployed = True
 
     def optimize_mods(self, event):
-        ensure_profile(Config.Active.Importer.importer_path)
+        ensure_package_profile(Config.Active.Importer.importer_path)
         if not event.silent:
             Events.Fire(Events.Application.ShowInfo(
                 modal=True,
                 title='GPMI',
-                message='GPMI uses hash_db.json and PTRTEX files; there are no 3DMigoto INI files to optimize.'
+                message='GPMI imports portrait images through the Portrait Manager; there are no 3DMigoto INI files to optimize.'
             ))
 
     def _configured_game_exe_path(self) -> Optional[Path]:
@@ -203,12 +212,33 @@ class GPMIPackage(ModelImporterPackage):
 
     def _prepare_runtime_profile(self):
         importer_path = Config.Active.Importer.importer_path
-        ensure_profile(importer_path)
-        db = load_hash_db(importer_path / 'hash_db.json')
-        db.dump_unknown = Config.Active.Importer.dump_unknown
-        db.min_width = Config.Active.Importer.min_width
-        db.min_height = Config.Active.Importer.min_height
-        write_runtime_ini(importer_path, db)
+        ensure_package_profile(importer_path)
+        game_path = self.validate_game_path(Config.Active.Importer.game_folder)
+        game_exe_path = self.validate_game_exe_path(game_path)
+        profile_dir = game_profile_dir(game_exe_path)
+        source_db = profile_dir / HASH_DB_FILE
+        runtime_db = profile_dir / RUNTIME_HASH_DB_FILE
+        meta_path = profile_dir / META_FILE
+        ensure_game_profile(profile_dir)
+
+        needs_runtime_rebuild = not runtime_db.is_file()
+        if runtime_db.is_file() and source_db.is_file() and source_db.stat().st_mtime > runtime_db.stat().st_mtime:
+            needs_runtime_rebuild = True
+        if runtime_db.is_file() and meta_path.is_file() and meta_path.stat().st_mtime > runtime_db.stat().st_mtime:
+            needs_runtime_rebuild = True
+
+        if source_db.is_file() and needs_runtime_rebuild:
+            try:
+                build_runtime_hash_db(profile_dir)
+            except Exception:
+                log.exception('Failed to build initial GPMI runtime hash DB')
+
+        write_game_runtime_ini(
+            profile_dir,
+            min_width=int(Config.Active.Importer.min_width),
+            min_height=int(Config.Active.Importer.min_height),
+            mirror_dirs=[importer_path / 'Core/GPMI'],
+        )
 
     def _prepare_reshade_config(self, reshade_dll: Path):
         """Create the minimal ReShade config required for LoadLibrary injection.
