@@ -8,6 +8,8 @@
 #include <atomic>
 #include <array>
 #include <mutex>
+#include <string>
+#include <vector>
 
 namespace gpmi
 {
@@ -37,6 +39,48 @@ std::array<std::atomic<std::uint64_t>, 8> g_sret_arg_hist{};
 std::array<std::atomic<std::uint64_t>, 8> g_alt_arg_hist{};
 thread_local bool g_inside_hook = false;
 std::mutex g_install_mutex;
+
+std::string make_unit_key(bool high_resolution, const std::string &type, const std::string &action)
+{
+    return std::string(high_resolution ? "Unit_H/" : "Unit/") + type + "_" + action;
+}
+
+void add_unique_key(std::vector<std::string> &keys, std::string key)
+{
+    for (const auto &existing : keys)
+    {
+        if (existing == key)
+            return;
+    }
+    keys.push_back(std::move(key));
+}
+
+std::vector<std::string> build_manifest_match_keys(const UnitCall &call)
+{
+    std::vector<std::string> keys;
+    add_unique_key(keys, call.logical_path);
+
+    // Mirror ImageLoader.unit() fallbacks. The original script can normalize
+    // exhaust -> default and *_h -> * in safe mode before it builds the final
+    // Mload() path. We keep the raw call as the first key, then try normalized
+    // keys so existing Unit/jean_default or Unit_H/jean_default rules still
+    // match calls such as unit("jean_h", "default", true) or
+    // unit("jean", "exhaust", true).
+    const bool has_h_suffix = call.type.size() > 2 && call.type.ends_with("_h");
+    const std::string stripped_type = has_h_suffix ? call.type.substr(0, call.type.size() - 2) : call.type;
+    const std::string fallback_action = (call.action == "exhaust") ? "default" : call.action;
+
+    if (call.action != "default")
+        add_unique_key(keys, make_unit_key(call.high_resolution, call.type, "default"));
+    if (has_h_suffix)
+        add_unique_key(keys, make_unit_key(call.high_resolution, stripped_type, call.action));
+    if (has_h_suffix && call.action != "default")
+        add_unique_key(keys, make_unit_key(call.high_resolution, stripped_type, "default"));
+    if (fallback_action != call.action)
+        add_unique_key(keys, make_unit_key(call.high_resolution, stripped_type, fallback_action));
+
+    return keys;
+}
 
 void log_argument_sample(const char *label,
                          const void *method,
@@ -137,12 +181,16 @@ void __fastcall object_callp_detour(void *return_variant,
     if (g_probe_only)
         return;
 
-    auto rule = manifest().match(unit_call->logical_path);
-    if (!rule && unit_call->action != "default")
+    std::optional<Rule> rule;
+    std::string matched_key;
+    for (const auto &key : build_manifest_match_keys(*unit_call))
     {
-        const std::string fallback_key = std::string(unit_call->high_resolution ? "Unit_H/" : "Unit/") +
-                                         unit_call->type + "_default";
-        rule = manifest().match(fallback_key);
+        rule = manifest().match(key);
+        if (rule)
+        {
+            matched_key = key;
+            break;
+        }
     }
 
     if (!rule)
@@ -157,12 +205,17 @@ void __fastcall object_callp_detour(void *return_variant,
         return;
     }
 
-    log().info("unit call matched: " + unit_call->logical_path +
+    if (matched_key != unit_call->logical_path)
+    {
+        log().info("unit call matched via fallback key: " + unit_call->logical_path +
+                   " -> " + matched_key);
+    }
+    log().info("unit call matched: " + matched_key +
                " -> " + rule->replacement.string());
     if (replace_return_with_texture(return_variant, rule->replacement))
-        log().info("unit return replaced: " + unit_call->logical_path);
+        log().info("unit return replaced: " + matched_key);
     else
-        log().warn("unit return replacement failed: " + unit_call->logical_path);
+        log().warn("unit return replacement failed: " + matched_key);
 }
 }
 
