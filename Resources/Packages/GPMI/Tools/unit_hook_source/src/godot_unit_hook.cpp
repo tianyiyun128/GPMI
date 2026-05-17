@@ -60,24 +60,16 @@ std::vector<std::string> build_manifest_match_keys(const UnitCall &call)
     std::vector<std::string> keys;
     add_unique_key(keys, call.logical_path);
 
-    // Mirror ImageLoader.unit() fallbacks. The original script can normalize
-    // exhaust -> default and *_h -> * in safe mode before it builds the final
-    // Mload() path. We keep the raw call as the first key, then try normalized
-    // keys so existing Unit/jean_default or Unit_H/jean_default rules still
-    // match calls such as unit("jean_h", "default", true) or
-    // unit("jean", "exhaust", true).
+    // Only normalize the character type suffix used by safe-mode calls.
+    // Do not map exhaust or any other action to default: those are distinct
+    // portrait assets and should only be replaced when the manifest explicitly
+    // contains that action.
     const bool has_h_suffix = call.type.size() > 2 && call.type.ends_with("_h");
-    const std::string stripped_type = has_h_suffix ? call.type.substr(0, call.type.size() - 2) : call.type;
-    const std::string fallback_action = (call.action == "exhaust") ? "default" : call.action;
-
-    if (call.action != "default")
-        add_unique_key(keys, make_unit_key(call.high_resolution, call.type, "default"));
     if (has_h_suffix)
+    {
+        const std::string stripped_type = call.type.substr(0, call.type.size() - 2);
         add_unique_key(keys, make_unit_key(call.high_resolution, stripped_type, call.action));
-    if (has_h_suffix && call.action != "default")
-        add_unique_key(keys, make_unit_key(call.high_resolution, stripped_type, "default"));
-    if (fallback_action != call.action)
-        add_unique_key(keys, make_unit_key(call.high_resolution, stripped_type, fallback_action));
+    }
 
     return keys;
 }
