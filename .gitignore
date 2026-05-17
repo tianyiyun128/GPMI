@@ -7,6 +7,7 @@ Resources/Security/*.key
 Resources/Security/*.der
 Resources/Packages/Updater/
 Resources/Packages/GPMI/Tools/kernel_source/build*/
+Resources/Packages/GPMI/Tools/unit_hook_source/build*/
 Resources/Packages/GPMI/Tools/third_party/reshade/*
 !Resources/Packages/GPMI/Tools/third_party/reshade/LICENSE.md
 !Resources/Packages/GPMI/Tools/third_party/reshade/include/

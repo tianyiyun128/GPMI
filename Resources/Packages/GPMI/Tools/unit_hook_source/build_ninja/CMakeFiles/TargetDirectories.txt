@@ -1,3 +1,0 @@
-C:/software/XXMI-Launcher-GPMI/Resources/Packages/GPMI/Tools/unit_hook_source/build_ninja/CMakeFiles/GPMIUnitHook.dir
-C:/software/XXMI-Launcher-GPMI/Resources/Packages/GPMI/Tools/unit_hook_source/build_ninja/CMakeFiles/edit_cache.dir
-C:/software/XXMI-Launcher-GPMI/Resources/Packages/GPMI/Tools/unit_hook_source/build_ninja/CMakeFiles/rebuild_cache.dir

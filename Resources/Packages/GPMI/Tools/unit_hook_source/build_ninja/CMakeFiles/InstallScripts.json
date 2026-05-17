@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"C:/software/XXMI-Launcher-GPMI/Resources/Packages/GPMI/Tools/unit_hook_source/build_ninja/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
