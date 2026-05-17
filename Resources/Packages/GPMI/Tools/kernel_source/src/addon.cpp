@@ -40,7 +40,9 @@ bool g_inside_replacement_upload = false;
 uint64_t g_replace_count = 0;
 uint64_t g_seen_count = 0;
 uint64_t g_trace_count = 0;
+uint64_t g_candidate_trace_count = 0;
 constexpr uint64_t k_max_trace_logs = 1200;
+constexpr uint64_t k_max_candidate_trace_logs = 400;
 
 thread_local PtrTex g_tls_tex;
 thread_local std::vector<uint8_t> g_tls_scratch;
@@ -64,16 +66,72 @@ std::filesystem::path detect_base_dir()
     return std::filesystem::path(module_path).parent_path();
 }
 
-bool should_consider(const reshade::api::resource_desc &desc)
+bool should_consider_with_reason(const reshade::api::resource_desc &desc, std::string *reason)
 {
     using reshade::api::resource_type;
     const auto &cfg = config_store().current();
-    return cfg.enabled &&
-           desc.type == resource_type::texture_2d &&
-           desc.texture.width >= cfg.min_width &&
-           desc.texture.height >= cfg.min_height &&
-           desc.texture.samples <= 1 &&
-           is_supported_color_format(desc.texture.format);
+    if (!cfg.enabled)
+    {
+        if (reason != nullptr) *reason = "disabled by config";
+        return false;
+    }
+    if (desc.type != resource_type::texture_2d)
+    {
+        if (reason != nullptr) *reason = "not texture_2d, type=" + std::to_string(static_cast<uint32_t>(desc.type));
+        return false;
+    }
+    if (desc.texture.width < cfg.min_width || desc.texture.height < cfg.min_height)
+    {
+        if (reason != nullptr)
+            *reason = "below minimum, target=" + std::to_string(desc.texture.width) + "x" + std::to_string(desc.texture.height) +
+                      ", minimum=" + std::to_string(cfg.min_width) + "x" + std::to_string(cfg.min_height);
+        return false;
+    }
+    if (desc.texture.samples > 1)
+    {
+        if (reason != nullptr) *reason = "multisampled, samples=" + std::to_string(desc.texture.samples);
+        return false;
+    }
+    if (!is_supported_color_format(desc.texture.format))
+    {
+        if (reason != nullptr) *reason = "unsupported format=" + std::to_string(static_cast<uint32_t>(desc.texture.format));
+        return false;
+    }
+    if (reason != nullptr) *reason = "accepted";
+    return true;
+}
+
+bool should_consider(const reshade::api::resource_desc &desc)
+{
+    return should_consider_with_reason(desc, nullptr);
+}
+
+std::string texture_desc_text(const reshade::api::resource_desc &desc,
+                              const reshade::api::subresource_box *box)
+{
+    return "target=" + std::to_string(desc.texture.width) + "x" + std::to_string(desc.texture.height) +
+           ", upload=" + std::to_string(region_width(desc, box)) + "x" + std::to_string(region_height(desc, box)) +
+           ", format=" + std::to_string(static_cast<uint32_t>(desc.texture.format)) +
+           ", samples=" + std::to_string(desc.texture.samples) +
+           ", type=" + std::to_string(static_cast<uint32_t>(desc.type));
+}
+
+void trace_candidate(const char *stage,
+                     const reshade::api::resource_desc &desc,
+                     const reshade::api::subresource_box *box,
+                     bool accepted,
+                     const std::string &reason,
+                     const std::string &detail = {})
+{
+    if (!g_loaded || g_candidate_trace_count >= k_max_candidate_trace_logs)
+        return;
+
+    ++g_candidate_trace_count;
+    log().info(std::string("texture candidate ") + stage +
+               ": " + texture_desc_text(desc, box) +
+               ", accepted=" + (accepted ? "yes" : "no") +
+               ", reason=" + reason +
+               (detail.empty() ? std::string() : ", " + detail));
 }
 
 bool load_rule_texture(const Rule &rule, PtrTex &out)
@@ -179,7 +237,11 @@ void trace_copy_event(const char *stage,
 bool try_prepare_initial_replacement(const reshade::api::resource_desc &desc,
                                      reshade::api::subresource_data *initial_data)
 {
-    if (initial_data == nullptr || initial_data[0].data == nullptr || !should_consider(desc))
+    std::string reason;
+    const bool accepted = should_consider_with_reason(desc, &reason);
+    trace_candidate("create-resource", desc, nullptr, accepted, reason,
+                    initial_data != nullptr && initial_data[0].data != nullptr ? "initial_data=yes" : "initial_data=no");
+    if (initial_data == nullptr || initial_data[0].data == nullptr || !accepted)
         return false;
 
     const uint64_t hash = hash_texture_upload(desc, initial_data[0], 0, nullptr);
@@ -208,7 +270,13 @@ bool try_replace_update(reshade::api::device *device,
                         uint32_t subresource,
                         const reshade::api::subresource_box *box)
 {
-    if (g_inside_replacement_upload || data.data == nullptr || !should_consider(desc))
+    if (g_inside_replacement_upload || data.data == nullptr)
+        return false;
+
+    std::string reason;
+    const bool accepted = should_consider_with_reason(desc, &reason);
+    trace_candidate("update", desc, box, accepted, reason, "subresource=" + std::to_string(subresource));
+    if (!accepted)
         return false;
 
     const uint64_t hash = hash_texture_upload(desc, data, subresource, box);
@@ -240,7 +308,13 @@ void try_replace_mapped_data(const reshade::api::resource_desc &desc,
                              const reshade::api::subresource_data &mapped,
                              uint32_t subresource)
 {
-    if (mapped.data == nullptr || !should_consider(desc))
+    if (mapped.data == nullptr)
+        return;
+
+    std::string reason;
+    const bool accepted = should_consider_with_reason(desc, &reason);
+    trace_candidate("mapped", desc, nullptr, accepted, reason, "subresource=" + std::to_string(subresource));
+    if (!accepted)
         return;
 
     const uint64_t hash = hash_texture_upload(desc, mapped, subresource, nullptr);
@@ -285,7 +359,10 @@ bool try_replace_update_command(reshade::api::command_list *cmd_list,
         return false;
 
     const auto desc = device->get_resource_desc(dest);
-    if (!should_consider(desc))
+    std::string reason;
+    const bool accepted = should_consider_with_reason(desc, &reason);
+    trace_candidate("command-update", desc, dest_box, accepted, reason, "subresource=" + std::to_string(dest_subresource));
+    if (!accepted)
         return false;
 
     const uint64_t hash = hash_texture_upload(desc, data, dest_subresource, dest_box);
@@ -332,7 +409,11 @@ bool try_replace_copy_buffer_to_texture(reshade::api::command_list *cmd_list,
         return false;
 
     const auto desc = device->get_resource_desc(dest);
-    if (!should_consider(desc))
+    std::string reason;
+    const bool accepted = should_consider_with_reason(desc, &reason);
+    trace_candidate("copy-buffer-to-texture", desc, dest_box, accepted, reason,
+                    "subresource=" + std::to_string(dest_subresource) + ", row_length=" + std::to_string(row_length));
+    if (!accepted)
         return false;
 
     const uint32_t bpp = bytes_per_pixel(desc.texture.format);
@@ -398,6 +479,10 @@ static void on_init_device(reshade::api::device *device)
         ptr::g_base_dir = ptr::detect_base_dir();
         ptr::config_store().load(ptr::g_base_dir);
         ptr::g_loaded = true;
+        const auto &cfg = ptr::config_store().current();
+        ptr::log().info("runtime filters: min_width=" + std::to_string(cfg.min_width) +
+                        ", min_height=" + std::to_string(cfg.min_height) +
+                        ", hash_db=" + cfg.hash_db_path.string());
     }
 }
 
@@ -421,7 +506,11 @@ static void on_init_resource(reshade::api::device *device,
     UNREFERENCED_PARAMETER(device);
     UNREFERENCED_PARAMETER(initial_state);
     std::scoped_lock lock(ptr::g_mutex);
-    if (ptr::should_consider(desc))
+    std::string reason;
+    const bool accepted = ptr::should_consider_with_reason(desc, &reason);
+    ptr::trace_candidate("init-resource", desc, nullptr, accepted, reason,
+                         initial_data != nullptr && initial_data[0].data != nullptr ? "initial_data=yes" : "initial_data=no");
+    if (accepted)
     {
         ptr::g_resources[ptr::handle_of(resource)] = ptr::ResourceRecord{desc, 0};
         if (initial_data != nullptr && initial_data[0].data != nullptr)
@@ -449,7 +538,17 @@ static bool on_update_texture_region(reshade::api::device *device,
     std::scoped_lock lock(ptr::g_mutex);
     const auto it = ptr::g_resources.find(ptr::handle_of(resource));
     if (it == ptr::g_resources.end())
+    {
+        if (device != nullptr)
+        {
+            const auto desc = device->get_resource_desc(resource);
+            std::string reason;
+            const bool accepted = ptr::should_consider_with_reason(desc, &reason);
+            ptr::trace_candidate("update-untracked", desc, box, accepted, reason,
+                                 "resource was not accepted during init-resource, subresource=" + std::to_string(subresource));
+        }
         return false;
+    }
     return ptr::try_replace_update(device, it->second.desc, data, resource, subresource, box);
 }
 
