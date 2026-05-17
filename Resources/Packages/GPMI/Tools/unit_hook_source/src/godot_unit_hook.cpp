@@ -9,14 +9,11 @@
 #include <array>
 #include <mutex>
 #include <string>
-#include <vector>
 
 namespace gpmi
 {
 namespace
 {
-// MSVC x64 member function returning Godot Variant by value is expected to use
-// a hidden return pointer first, then this, then normal arguments.
 using ObjectCallpFn = void(__fastcall *)(void *return_variant,
                                          void *self,
                                          const void *method,
@@ -39,40 +36,6 @@ std::array<std::atomic<std::uint64_t>, 8> g_sret_arg_hist{};
 std::array<std::atomic<std::uint64_t>, 8> g_alt_arg_hist{};
 thread_local bool g_inside_hook = false;
 std::mutex g_install_mutex;
-
-std::string make_unit_key(bool high_resolution, const std::string &type, const std::string &action)
-{
-    return std::string(high_resolution ? "Unit_H/" : "Unit/") + type + "_" + action;
-}
-
-void add_unique_key(std::vector<std::string> &keys, std::string key)
-{
-    for (const auto &existing : keys)
-    {
-        if (existing == key)
-            return;
-    }
-    keys.push_back(std::move(key));
-}
-
-std::vector<std::string> build_manifest_match_keys(const UnitCall &call)
-{
-    std::vector<std::string> keys;
-    add_unique_key(keys, call.logical_path);
-
-    // Only normalize the character type suffix used by safe-mode calls.
-    // Do not map exhaust or any other action to default: those are distinct
-    // portrait assets and should only be replaced when the manifest explicitly
-    // contains that action.
-    const bool has_h_suffix = call.type.size() > 2 && call.type.ends_with("_h");
-    if (has_h_suffix)
-    {
-        const std::string stripped_type = call.type.substr(0, call.type.size() - 2);
-        add_unique_key(keys, make_unit_key(call.high_resolution, stripped_type, call.action));
-    }
-
-    return keys;
-}
 
 void log_argument_sample(const char *label,
                          const void *method,
@@ -133,15 +96,13 @@ void __fastcall object_callp_detour(void *return_variant,
             {
                 log().info("callp observed but method decode failed, calls=" + std::to_string(call_index));
             }
-        }
-        if (g_verbose_calls)
-        {
-            log_argument_sample("sret", method, args, arg_count, g_sret_arg_sample_count);
 
+            log_argument_sample("sret", method, args, arg_count, g_sret_arg_sample_count);
             const void *alt_method = self;
             const void **alt_args = reinterpret_cast<const void **>(const_cast<void *>(method));
             log_argument_sample("nosret", alt_method, alt_args, alt_arg_count, g_alt_arg_sample_count);
         }
+
         unit_call = try_decode_unit_call(self, method, args, arg_count);
         if (!unit_call && g_verbose_calls)
         {
@@ -173,21 +134,10 @@ void __fastcall object_callp_detour(void *return_variant,
     if (g_probe_only)
         return;
 
-    std::optional<Rule> rule;
-    std::string matched_key;
-    for (const auto &key : build_manifest_match_keys(*unit_call))
-    {
-        rule = manifest().match(key);
-        if (rule)
-        {
-            matched_key = key;
-            break;
-        }
-    }
-
+    auto rule = manifest().match(unit_call->logical_path);
     if (!rule)
     {
-        log().info("unit call skipped: no rule for " + unit_call->logical_path);
+        log().info("unit call skipped: no exact rule for " + unit_call->logical_path);
         return;
     }
 
@@ -197,17 +147,12 @@ void __fastcall object_callp_detour(void *return_variant,
         return;
     }
 
-    if (matched_key != unit_call->logical_path)
-    {
-        log().info("unit call matched via fallback key: " + unit_call->logical_path +
-                   " -> " + matched_key);
-    }
-    log().info("unit call matched: " + matched_key +
+    log().info("unit call matched: " + unit_call->logical_path +
                " -> " + rule->replacement.string());
     if (replace_return_with_texture(return_variant, rule->replacement))
-        log().info("unit return replaced: " + matched_key);
+        log().info("unit return replaced: " + unit_call->logical_path);
     else
-        log().warn("unit return replacement failed: " + matched_key);
+        log().warn("unit return replacement failed: " + unit_call->logical_path);
 }
 }
 
