@@ -6,6 +6,7 @@
 #include <reshade.hpp>
 #include <Windows.h>
 
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <mutex>
@@ -57,15 +58,15 @@ constexpr uint64_t k_max_present_logs = 160;
 
 thread_local PtrTex g_tls_tex;
 thread_local std::vector<uint8_t> g_tls_scratch;
-thread_local reshade::api::subresource_data g_tls_subresource{};
+thread_local reshade::api::subresource_data g_tls_upload{};
 
-uint64_t handle_of(reshade::api::resource v) { return static_cast<uint64_t>(v.handle); }
-uint64_t handle_of(reshade::api::resource_view v) { return static_cast<uint64_t>(v.handle); }
-uint64_t handle_of(reshade::api::descriptor_table v) { return static_cast<uint64_t>(v.handle); }
-uint64_t handle_of(reshade::api::command_list *v) { return reinterpret_cast<uint64_t>(v); }
-uint64_t handle_of(reshade::api::command_queue *v) { return reinterpret_cast<uint64_t>(v); }
-uint64_t handle_of(reshade::api::swapchain *v) { return reinterpret_cast<uint64_t>(v); }
-uint64_t handle_of(reshade::api::effect_runtime *v) { return reinterpret_cast<uint64_t>(v); }
+uint64_t handle_of(reshade::api::resource value) { return static_cast<uint64_t>(value.handle); }
+uint64_t handle_of(reshade::api::resource_view value) { return static_cast<uint64_t>(value.handle); }
+uint64_t handle_of(reshade::api::descriptor_table value) { return static_cast<uint64_t>(value.handle); }
+uint64_t handle_of(reshade::api::command_list *value) { return reinterpret_cast<uint64_t>(value); }
+uint64_t handle_of(reshade::api::command_queue *value) { return reinterpret_cast<uint64_t>(value); }
+uint64_t handle_of(reshade::api::swapchain *value) { return reinterpret_cast<uint64_t>(value); }
+uint64_t handle_of(reshade::api::effect_runtime *value) { return reinterpret_cast<uint64_t>(value); }
 
 std::filesystem::path detect_base_dir()
 {
@@ -103,6 +104,7 @@ std::string desc_text(const reshade::api::resource_desc &desc)
 {
     if (!is_texture_2d(desc))
         return "type=" + std::to_string(static_cast<uint32_t>(desc.type));
+
     return "target=" + std::to_string(desc.texture.width) + "x" + std::to_string(desc.texture.height) +
            ", format=" + std::to_string(static_cast<uint32_t>(desc.texture.format)) +
            ", samples=" + std::to_string(desc.texture.samples) +
@@ -128,6 +130,7 @@ bool matches_rule_size(const reshade::api::resource_desc &desc)
 {
     if (!is_texture_2d(desc))
         return false;
+
     for (const auto &entry : config_store().current().rules)
     {
         const Rule &rule = entry.second;
@@ -142,6 +145,7 @@ std::string target_suffix(const reshade::api::resource_desc &desc)
 {
     if (!matches_rule_size(desc))
         return {};
+
     uint32_t count = 0;
     std::string labels;
     for (const auto &entry : config_store().current().rules)
@@ -149,15 +153,20 @@ std::string target_suffix(const reshade::api::resource_desc &desc)
         const Rule &rule = entry.second;
         if (rule.width != desc.texture.width || rule.height != desc.texture.height)
             continue;
+
         ++count;
         if (labels.size() < 180)
         {
-            if (!labels.empty()) labels += "|";
+            if (!labels.empty())
+                labels += "|";
             labels += rule.slot.empty() ? "slot?" : rule.slot;
-            if (!rule.hash_variant.empty()) labels += ":" + rule.hash_variant;
+            if (!rule.hash_variant.empty())
+                labels += ":" + rule.hash_variant;
         }
     }
-    return ", TARGET size_rules=" + std::to_string(count) + (labels.empty() ? std::string() : ", labels=" + labels);
+
+    return ", TARGET size_rules=" + std::to_string(count) +
+           (labels.empty() ? std::string() : ", labels=" + labels);
 }
 
 void log_lifecycle(const std::string &message)
@@ -166,6 +175,22 @@ void log_lifecycle(const std::string &message)
         return;
     ++g_lifecycle_log_count;
     log().info(message);
+}
+
+void log_upload_candidate(const char *stage,
+                          const reshade::api::resource_desc &desc,
+                          const reshade::api::subresource_box *box,
+                          bool accepted,
+                          const std::string &reason)
+{
+    if (!g_loaded || g_upload_log_count >= k_max_upload_logs)
+        return;
+
+    ++g_upload_log_count;
+    log().info(std::string("upload candidate ") + stage + ": " + desc_text(desc) +
+               ", upload=" + std::to_string(box_width(desc, box)) + "x" + std::to_string(box_height(desc, box)) +
+               ", accepted=" + (accepted ? "yes" : "no") +
+               ", reason=" + reason + target_suffix(desc));
 }
 
 bool load_rule_texture(const Rule &rule, PtrTex &out)
@@ -198,6 +223,7 @@ bool build_replacement_upload(const Rule &rule,
 {
     if (!load_rule_texture(rule, texture_cache))
         return false;
+
     if (!is_texture_2d(desc) || texture_cache.width != desc.texture.width || texture_cache.height != desc.texture.height)
     {
         log().warn("replacement size mismatch for " + hash_to_hex(rule.hash) +
@@ -205,6 +231,7 @@ bool build_replacement_upload(const Rule &rule,
                    ", original=" + desc_text(desc));
         return false;
     }
+
     return make_subresource_for_format(texture_cache, desc.texture.format, scratch, upload);
 }
 
@@ -240,43 +267,68 @@ bool should_hash_upload(const reshade::api::resource_desc &desc, std::string *re
     return true;
 }
 
-bool try_replace_upload(reshade::api::device *device,
-                        const reshade::api::resource_desc &desc,
-                        const reshade::api::subresource_data &data,
-                        reshade::api::resource resource,
-                        uint32_t subresource,
-                        const reshade::api::subresource_box *box,
-                        const char *stage)
+const Rule *find_rule_for_upload(const char *stage,
+                                 const reshade::api::resource_desc &desc,
+                                 const reshade::api::subresource_data &data,
+                                 uint32_t subresource,
+                                 const reshade::api::subresource_box *box)
 {
-    if (device == nullptr || g_inside_replacement_upload || data.data == nullptr)
-        return false;
-
     std::string reason;
     const bool accepted = should_hash_upload(desc, &reason);
-    if (g_upload_log_count < k_max_upload_trace_logs)
-    {
-        ++g_upload_log_count;
-        log().info(std::string("upload candidate ") + stage + ": " + desc_text(desc) +
-                   ", upload=" + std::to_string(box_width(desc, box)) + "x" + std::to_string(box_height(desc, box)) +
-                   ", accepted=" + (accepted ? "yes" : "no") +
-                   ", reason=" + reason +
-                   target_suffix(desc));
-    }
-    if (!accepted)
-        return false;
+    log_upload_candidate(stage, desc, box, accepted, reason);
+    if (!accepted || data.data == nullptr)
+        return nullptr;
 
     const uint64_t hash = hash_texture_upload(desc, data, subresource, box);
     if (hash == 0)
-        return false;
+        return nullptr;
 
     const Rule *rule = config_store().find(hash);
-    if (g_upload_log_count < k_max_upload_trace_logs)
+    if (g_upload_log_count < k_max_upload_logs)
     {
         ++g_upload_log_count;
         log().info(std::string("seen texture ") + stage + ": hash=" + hash_to_hex(hash) +
                    ", rule=" + (rule != nullptr ? "yes" : "no") +
                    ", " + desc_text(desc));
     }
+    return rule;
+}
+
+bool try_prepare_initial_replacement(const reshade::api::resource_desc &desc,
+                                     reshade::api::subresource_data *initial_data)
+{
+    if (initial_data == nullptr || initial_data[0].data == nullptr)
+    {
+        std::string reason;
+        const bool accepted = should_hash_upload(desc, &reason);
+        log_upload_candidate("initial_data", desc, nullptr, accepted, reason + ", initial_data=no");
+        return false;
+    }
+
+    const Rule *rule = find_rule_for_upload("initial_data", desc, initial_data[0], 0, nullptr);
+    if (rule == nullptr)
+        return false;
+
+    if (!build_replacement_upload(*rule, desc, g_tls_tex, g_tls_scratch, g_tls_upload))
+        return false;
+
+    initial_data[0] = g_tls_upload;
+    log().info("initial_data replaced: " + hash_to_hex(rule->hash) + " -> " + rule->replacement.string());
+    return true;
+}
+
+bool try_replace_existing_upload(reshade::api::device *device,
+                                 const reshade::api::resource_desc &desc,
+                                 const reshade::api::subresource_data &data,
+                                 reshade::api::resource resource,
+                                 uint32_t subresource,
+                                 const reshade::api::subresource_box *box,
+                                 const char *stage)
+{
+    if (device == nullptr || g_inside_replacement_upload || data.data == nullptr || handle_of(resource) == 0)
+        return false;
+
+    const Rule *rule = find_rule_for_upload(stage, desc, data, subresource, box);
     if (rule == nullptr)
         return false;
 
@@ -289,7 +341,8 @@ bool try_replace_upload(reshade::api::device *device,
     g_inside_replacement_upload = true;
     device->update_texture_region(upload, resource, subresource, box);
     g_inside_replacement_upload = false;
-    log().info(std::string(stage) + " replaced: " + hash_to_hex(hash) + " -> " + rule->replacement.string());
+
+    log().info(std::string(stage) + " replaced: " + hash_to_hex(rule->hash) + " -> " + rule->replacement.string());
     return true;
 }
 }
@@ -366,8 +419,10 @@ static bool on_create_resource(reshade::api::device *device,
                                reshade::api::subresource_data *initial_data,
                                reshade::api::resource_usage initial_state)
 {
+    UNREFERENCED_PARAMETER(device);
     UNREFERENCED_PARAMETER(initial_state);
     std::scoped_lock lock(ptr::g_mutex);
+
     if (ptr::g_resource_log_count < ptr::k_max_resource_logs)
     {
         ++ptr::g_resource_log_count;
@@ -375,10 +430,7 @@ static bool on_create_resource(reshade::api::device *device,
                         ", initial_data=" + std::string(initial_data != nullptr && initial_data[0].data != nullptr ? "yes" : "no") +
                         ptr::target_suffix(desc));
     }
-    if (initial_data == nullptr || initial_data[0].data == nullptr || device == nullptr)
-        return false;
-    reshade::api::resource dummy{};
-    return ptr::try_replace_upload(device, desc, initial_data[0], dummy, 0, nullptr, "initial_data");
+    return ptr::try_prepare_initial_replacement(desc, initial_data);
 }
 
 static void on_init_resource(reshade::api::device *device,
@@ -390,6 +442,7 @@ static void on_init_resource(reshade::api::device *device,
     UNREFERENCED_PARAMETER(device);
     UNREFERENCED_PARAMETER(initial_state);
     std::scoped_lock lock(ptr::g_mutex);
+
     if (ptr::g_resource_log_count < ptr::k_max_resource_logs)
     {
         ++ptr::g_resource_log_count;
@@ -398,6 +451,7 @@ static void on_init_resource(reshade::api::device *device,
                         ", initial_data=" + std::string(initial_data != nullptr && initial_data[0].data != nullptr ? "yes" : "no") +
                         ptr::target_suffix(desc));
     }
+
     if (ptr::is_texture_2d(desc))
         ptr::g_resources[ptr::handle_of(resource)] = ptr::ResourceRecord{desc};
 }
@@ -418,18 +472,15 @@ static void on_init_resource_view(reshade::api::device *device,
 {
     UNREFERENCED_PARAMETER(desc);
     std::scoped_lock lock(ptr::g_mutex);
-    if (device == nullptr)
+    if (device == nullptr || ptr::g_view_log_count >= ptr::k_max_view_logs)
         return;
+
     const auto resource_desc = device->get_resource_desc(resource);
-    if (ptr::g_view_log_count < ptr::k_max_view_logs)
-    {
-        ++ptr::g_view_log_count;
-        ptr::log().info("resource view heartbeat: view=" + std::to_string(ptr::handle_of(view)) +
-                        ", res=" + std::to_string(ptr::handle_of(resource)) +
-                        ", usage=" + std::to_string(static_cast<uint32_t>(usage_type)) +
-                        ", " + ptr::desc_text(resource_desc) +
-                        ptr::target_suffix(resource_desc));
-    }
+    ++ptr::g_view_log_count;
+    ptr::log().info("resource view heartbeat: view=" + std::to_string(ptr::handle_of(view)) +
+                    ", res=" + std::to_string(ptr::handle_of(resource)) +
+                    ", usage=" + std::to_string(static_cast<uint32_t>(usage_type)) +
+                    ", " + ptr::desc_text(resource_desc) + ptr::target_suffix(resource_desc));
 }
 
 static void on_destroy_resource_view(reshade::api::device *device, reshade::api::resource_view view)
@@ -446,9 +497,9 @@ static bool on_update_texture_region(reshade::api::device *device,
 {
     std::scoped_lock lock(ptr::g_mutex);
     auto it = ptr::g_resources.find(ptr::handle_of(resource));
-    if (it == ptr::g_resources.end() || device == nullptr)
+    if (it == ptr::g_resources.end())
         return false;
-    return ptr::try_replace_upload(device, it->second.desc, data, resource, subresource, box, "update_texture_region");
+    return ptr::try_replace_existing_upload(device, it->second.desc, data, resource, subresource, box, "update_texture_region");
 }
 
 static bool on_update_texture_region_command(reshade::api::command_list *cmd_list,
@@ -464,7 +515,7 @@ static bool on_update_texture_region_command(reshade::api::command_list *cmd_lis
     if (device == nullptr)
         return false;
     const auto desc = device->get_resource_desc(dest);
-    return ptr::try_replace_upload(device, desc, data, dest, dest_subresource, dest_box, "command_update_texture_region");
+    return ptr::try_replace_existing_upload(device, desc, data, dest, dest_subresource, dest_box, "command_update_texture_region");
 }
 
 static void on_map_texture_region(reshade::api::device *device,
@@ -494,7 +545,7 @@ static void on_unmap_texture_region(reshade::api::device *device,
     if (map_it == ptr::g_maps.end() || map_it->second.subresource != subresource)
         return;
     const auto desc = device->get_resource_desc(resource);
-    ptr::try_replace_upload(device, desc, map_it->second.data, resource, subresource, nullptr, "mapped_texture");
+    ptr::try_replace_existing_upload(device, desc, map_it->second.data, resource, subresource, nullptr, "mapped_texture");
     ptr::g_maps.erase(map_it);
 }
 
@@ -511,6 +562,7 @@ static bool on_copy_buffer_to_texture(reshade::api::command_list *cmd_list,
     UNREFERENCED_PARAMETER(source_offset);
     UNREFERENCED_PARAMETER(row_length);
     UNREFERENCED_PARAMETER(slice_height);
+    UNREFERENCED_PARAMETER(dest_box);
     std::scoped_lock lock(ptr::g_mutex);
     if (ptr::g_copy_log_count < ptr::k_max_copy_logs)
     {
