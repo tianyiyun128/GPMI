@@ -33,6 +33,8 @@ def main() -> int:
         root / 'src' / 'xxmi_launcher' / 'gui' / 'vars.py',
         root / 'Themes' / 'Default' / 'MainWindow' / 'LauncherFrame' / 'game-tile-gpmi.png',
         root / 'Themes' / 'Default' / 'MainWindow' / 'LauncherFrame' / 'background-image-gpmi.webp',
+        root / 'Resources' / 'Packages' / 'GPMI' / 'Tools' / 'unit_hook_source' / 'build.cmd',
+        root / 'Resources' / 'Packages' / 'GPMI' / 'Tools' / 'unit_hook_source' / 'src' / 'godot_unit_hook.cpp',
         root / 'Resources' / 'Packages' / 'GPMI' / 'Tools' / 'kernel_source' / 'build.cmd',
         root / 'Resources' / 'Packages' / 'GPMI' / 'Tools' / 'kernel_source' / 'src' / 'addon.cpp',
     ]
@@ -45,6 +47,7 @@ def main() -> int:
 
     # Runtime DLLs are produced/copied by the user, so warn instead of fail.
     runtime = [
+        root / 'Resources' / 'Packages' / 'GPMI' / 'Core' / 'GPMI' / 'GPMIUnitHook.dll',
         root / 'Resources' / 'Packages' / 'GPMI' / 'Core' / 'GPMI' / 'ReShade64.dll',
         root / 'Resources' / 'Packages' / 'GPMI' / 'Core' / 'GPMI' / 'PortraitHashReplace.addon64',
     ]

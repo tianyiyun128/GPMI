@@ -1,6 +1,4 @@
 import logging
-import os
-import subprocess
 import time
 import shlex
 from dataclasses import dataclass, field
@@ -11,7 +9,6 @@ import core.event_manager as Events
 import core.path_manager as Paths
 import core.config_manager as Config
 
-from core.locale_manager import L
 from core.package_manager import PackageMetadata
 from core.packages.migoto_package import MigotoManagerConfig
 from core.packages.model_importers.model_importer import ModelImporterConfig, ModelImporterPackage
@@ -49,6 +46,7 @@ class GPMIConfig(ModelImporterConfig):
 
     # Generic Godot target/runtime settings used by the GPMI portrait manager.
     custom_game_exe_name: str = ''
+    unit_hook_dll_path: str = ''
     # Legacy ReShade fields are retained for existing config files only. The
     # launcher no longer resolves or loads these DLLs; the in-game Godot hook is
     # responsible for consuming the live portrait manifest.
@@ -199,6 +197,22 @@ class GPMIPackage(ModelImporterPackage):
         Config.Active.Importer.custom_game_exe_name = game_exe_path.name
         return game_path, game_exe_path
 
+    def _resolve_unit_hook_dll(self) -> Path:
+        configured = str(getattr(Config.Active.Importer, 'unit_hook_dll_path', '') or '').strip().strip('"')
+        if configured:
+            path = Path(configured)
+            if not path.is_absolute():
+                path = Paths.App.Root / path
+        else:
+            path = Config.Active.Importer.importer_path / 'Core/GPMI/GPMIUnitHook.dll'
+        if not path.is_file():
+            raise ValueError(
+                f'GPMIUnitHook.dll not found: {path}\n\n'
+                'Build it first:\n'
+                'Resources\\Packages\\GPMI\\Tools\\unit_hook_source\\build.cmd'
+            )
+        return path
+
     def _prepare_runtime_profile(self):
         importer_path = Config.Active.Importer.importer_path
         ensure_package_profile(importer_path)
@@ -241,21 +255,24 @@ class GPMIPackage(ModelImporterPackage):
 
         game_path, game_exe_path = self.get_game_paths()
         start_exe_path, start_args, work_dir = self.get_start_cmd(game_path)
+        profile_dir = game_profile_dir(game_exe_path)
+        unit_hook_dll = self._resolve_unit_hook_dll()
 
         from core.utils.process_tracker import get_hwnds_for_pid
+        from core.gpmi.win_dll_injector import start_suspended_and_inject_dll
         import psutil
 
-        command = [str(start_exe_path), *start_args]
-        Events.Fire(Events.Application.StartGameExe(process_name=game_exe_path.name))
-        process = subprocess.Popen(
-            command,
-            cwd=work_dir,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            close_fds=True,
+        Events.Fire(Events.Application.Inject(library_name=unit_hook_dll.name, process_name=game_exe_path.name))
+        pid = start_suspended_and_inject_dll(
+            exe_path=start_exe_path,
+            args=start_args,
+            work_dir=work_dir,
+            dll_path=unit_hook_dll,
+            timeout_seconds=Config.Active.Importer.process_timeout,
+            env_overrides={
+                'GPMI_PROFILE_DIR': str(profile_dir),
+            },
         )
-        pid = process.pid
 
         Events.Fire(Events.Application.WaitForProcess(process_name=game_exe_path.name))
         deadline = time.time() + max(1, int(Config.Active.Importer.process_timeout))

@@ -1,47 +1,54 @@
-# GPMI integration patch
+# GPMI Patch Notes
 
-This fork keeps the XXMI Launcher UI and adds a new importer named **GPMI** for Godot portrait replacement.
+This fork keeps the XXMI Launcher UI shell and adds a GPMI workflow for Godot portrait replacement.
 
-## What was added
+## Current Direction
 
-- `GPMI` model importer registration in the launcher package system.
-- Top-bar importer button and toolbox entry.
-- Internal `GPMI Portrait Manager` window.
-- Local runtime profile under `Resources/Packages/GPMI`.
-- Hash database management via `hash_db.json`.
-- PNG → PTRTEX import using Pillow.
-- Dump browser for unknown texture uploads.
-- Runtime settings for Godot exe name, ReShade DLL path and add-on path.
-- ReShade add-on kernel source under `Resources/Packages/GPMI/Tools/kernel_source`.
+GPMI no longer treats ReShade/GPU hash replacement as the runtime path.
 
-## Runtime model
+The required runtime design is native Godot function hooking:
 
-1. Launcher starts the original Godot `.exe`.
-2. Launcher injects `ReShade64.dll` using XXMI's existing injector package.
-3. ReShade loads `PortraitHashReplace.addon64`.
-4. The add-on hashes 2D texture uploads.
-5. If a hash matches `hash_db.json`, the upload data is replaced with the selected PTRTEX texture.
+```gdscript
+ImageLoader.unit(type, action, high_resolution = false)
+```
 
-The original executable is not patched.
+All replaceable portrait assets must be handled through this function boundary. The runtime must read the function inputs, call the original function, then replace the final returned texture when local GPMI settings say a replacement is active.
 
-## Required external runtime files
+This route is mandatory because every target portrait is loaded through `ImageLoader.gd::unit()`. The implementation must not depend on whichever internal branch `unit()` uses to get the original image.
 
-The source tree intentionally does not include third-party binary DLLs. Put these files here after building/installing them:
+## Launcher Responsibilities
 
-- `Resources/Packages/GPMI/Core/GPMI/ReShade64.dll`
-- `Resources/Packages/GPMI/Core/GPMI/PortraitHashReplace.addon64`
+- Select and start one explicit Godot game `.exe`.
+- Manage `GPMI/Mods/<character>/<outfit>/Unit` and `Unit_H` imports.
+- Assign outfit ids.
+- Write `GPMI/mod_meta.json`.
+- Write `GPMI/live_portraits.json`.
+- Keep the launcher open while the game is running so portraits can be switched in-game.
 
-Build the add-on from `Resources/Packages/GPMI/Tools/kernel_source`. The CMake project expects ReShade add-on headers.
+## Native Runtime Responsibilities
 
-## Notes
+- Load into the Godot game process.
+- Locate the `ImageLoader` autoload object.
+- Hook `ImageLoader.unit(type, action, high_resolution)`.
+- Capture the actual call arguments.
+- Call the original `unit()` implementation.
+- Match the call against `GPMI/live_portraits.json`.
+- Load the replacement image from the selected mod folder.
+- Convert it to a valid Godot texture.
+- Replace only the final return value.
 
-- This is an MVP integration with the real XXMI UI shell. It cannot be guaranteed to work on every Godot renderer path until tested against the target packaged exe.
-- The hash replacement approach intentionally avoids relying on the original GDScript `config.user_path + "/MOD/"` file reads.
-- GPLv3 redistribution is compatible with using the XXMI Launcher source under its existing license terms, but keep upstream notices intact.
+## Rejected Legacy Work
 
-## 2026-05-16 hotfix: remove XXMI injector dependency
+The following older ideas are not part of the accepted design:
 
-- Replaced `Resources/Packages/XXMI/3dmloader.dll` injection dependency with `core/gpmi/win_reshade_injector.py`.
-- GPMI now starts the selected Godot exe suspended, injects `ReShade64.dll` with Windows `LoadLibraryW`, then resumes the game process.
-- Removed GPMI package requirement on `XXMI`.
-- Fixed stale `Injector file not found: {injector_lib_path}!` formatting in the legacy injector utility.
+- ReShade injection
+- ReShade add-ons
+- GPU texture hash matching
+- D3D12 upload replacement
+- `.ptrtex` generation
+- generated `RuntimeMods`
+- generated `MOD/Unit` or `MOD/Unit_H` override files
+- `FileAccess` or `ResourceLoader` redirection as the main mechanism
+- pre-populating `ImageLoader.image_cache`
+
+These can remain as historical context in old commits, but new implementation work must not continue down those routes.
