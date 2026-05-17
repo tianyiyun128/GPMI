@@ -9,6 +9,8 @@
 
 namespace ptr
 {
+constexpr uint64_t k_max_upload_trace_logs = 800;
+
 struct Rule
 {
     bool enabled = true;
