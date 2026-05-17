@@ -1,5 +1,6 @@
 import logging
 import os
+import subprocess
 import time
 import shlex
 from dataclasses import dataclass, field
@@ -48,6 +49,9 @@ class GPMIConfig(ModelImporterConfig):
 
     # Generic Godot target/runtime settings used by the GPMI portrait manager.
     custom_game_exe_name: str = ''
+    # Legacy ReShade fields are retained for existing config files only. The
+    # launcher no longer resolves or loads these DLLs; the in-game Godot hook is
+    # responsible for consuming the live portrait manifest.
     reshade_dll_path: str = ''
     addon_dll_path: str = ''
     min_width: int = 32
@@ -195,20 +199,6 @@ class GPMIPackage(ModelImporterPackage):
         Config.Active.Importer.custom_game_exe_name = game_exe_path.name
         return game_path, game_exe_path
 
-    def _resolve_runtime_dll(self, configured_path: str, default_rel: str, label: str) -> Path:
-        if configured_path:
-            path = Path(configured_path)
-            if not path.is_absolute():
-                path = Paths.App.Root / path
-        else:
-            path = Config.Active.Importer.importer_path / default_rel
-        if not path.is_file():
-            raise ValueError(
-                f'{label} not found: {path}\n\n'
-                'Open the GPMI Portrait Manager and copy/build the required runtime DLLs into Core/GPMI.'
-            )
-        return path
-
     def _prepare_runtime_profile(self):
         importer_path = Config.Active.Importer.importer_path
         ensure_package_profile(importer_path)
@@ -236,34 +226,6 @@ class GPMIPackage(ModelImporterPackage):
             mirror_dirs=[importer_path / 'Core/GPMI'],
         )
 
-    def _prepare_reshade_config(self, reshade_dll: Path):
-        """Create the minimal ReShade config required for LoadLibrary injection.
-
-        ReShade intentionally aborts initialization when it is loaded as a normal
-        DLL named ReShade64.dll and no ReShade.ini exists for the target app.
-        GPMI keeps ReShade outside the game folder, so we point ReShade at the
-        GPMI runtime directory and keep the add-on search path local.
-        """
-        reshade_base = reshade_dll.parent
-        (reshade_base / 'Addons').mkdir(parents=True, exist_ok=True)
-        reshade_ini = reshade_base / 'ReShade.ini'
-        reshade_ini.write_text(
-            '[INSTALL]\n'
-            'BasePath=.\n'
-            'Logging=1\n'
-            '\n'
-            '[ADDON]\n'
-            'AddonPath=Addons\n'
-            '\n'
-            '[GENERAL]\n'
-            'PresetPath=.\\GPMI_ReShadePreset.ini\n',
-            encoding='utf-8'
-        )
-        preset = reshade_base / 'GPMI_ReShadePreset.ini'
-        if not preset.exists():
-            preset.write_text('[General]\n', encoding='utf-8')
-        return reshade_base
-
     def get_start_cmd(self, game_path: Path) -> Tuple[Path, List[str], Optional[str]]:
         game_exe_path = self.validate_game_exe_path(game_path)
         start_args: List[str] = []
@@ -280,48 +242,20 @@ class GPMIPackage(ModelImporterPackage):
         game_path, game_exe_path = self.get_game_paths()
         start_exe_path, start_args, work_dir = self.get_start_cmd(game_path)
 
-        reshade_dll = self._resolve_runtime_dll(
-            Config.Active.Importer.reshade_dll_path,
-            'Core/GPMI/ReShade64.dll',
-            'ReShade64.dll'
-        )
-        addon_dll = self._resolve_runtime_dll(
-            Config.Active.Importer.addon_dll_path,
-            'Core/GPMI/PortraitHashReplace.addon64',
-            'PortraitHashReplace.addon64'
-        )
-
-        # ReShade looks for add-ons next to its own base path. The launcher keeps the
-        # add-on in Core/GPMI and also mirrors it into Addons for common ReShade layouts.
-        addon_mirror = Config.Active.Importer.importer_path / 'Core/GPMI/Addons' / addon_dll.name
-        if addon_mirror.resolve() != addon_dll.resolve():
-            addon_mirror.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                import shutil
-                shutil.copy2(addon_dll, addon_mirror)
-            except Exception:
-                log.exception('Failed to mirror GPMI add-on')
-
-        reshade_base = self._prepare_reshade_config(reshade_dll)
-
-        from core.gpmi.win_reshade_injector import start_suspended_and_inject_dll
         from core.utils.process_tracker import get_hwnds_for_pid
         import psutil
 
-        Events.Fire(Events.Application.Inject(library_name=reshade_dll.name, process_name=game_exe_path.name))
-        pid = start_suspended_and_inject_dll(
-            exe_path=start_exe_path,
-            args=start_args,
-            work_dir=work_dir,
-            dll_path=reshade_dll,
-            timeout_seconds=Config.Active.Importer.process_timeout,
-            env_overrides={
-                'RESHADE_BASE_PATH_OVERRIDE': str(reshade_base),
-                # ReShade otherwise rejects non-proxy LoadLibrary loads when no
-                # per-game ReShade.ini exists next to the Godot executable.
-                'RESHADE_DISABLE_LOADING_CHECK': '1',
-            },
+        command = [str(start_exe_path), *start_args]
+        Events.Fire(Events.Application.StartGameExe(process_name=game_exe_path.name))
+        process = subprocess.Popen(
+            command,
+            cwd=work_dir,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
         )
+        pid = process.pid
 
         Events.Fire(Events.Application.WaitForProcess(process_name=game_exe_path.name))
         deadline = time.time() + max(1, int(Config.Active.Importer.process_timeout))
