@@ -8,6 +8,7 @@
 #include <array>
 #include <cctype>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -26,6 +27,7 @@ constexpr size_t kGodotStringNameDataNameOffset = 16;
 constexpr size_t kVariantDataOffset = 8;
 
 std::uintptr_t g_texture_loader = 0;
+HMODULE g_texture_loader_module = nullptr;
 
 std::unordered_map<std::string, std::string> read_ini(const std::filesystem::path &path)
 {
@@ -278,6 +280,49 @@ bool call_texture_loader_seh(std::uintptr_t loader_address, void *return_variant
         return false;
     }
 }
+
+std::uintptr_t try_load_separated_texture_loader(const std::filesystem::path &profile_dir,
+                                                 const std::filesystem::path &dll_dir)
+{
+    if (g_texture_loader_module)
+    {
+        if (auto proc = GetProcAddress(g_texture_loader_module, "GPMI_LoadTextureVariant"))
+            return reinterpret_cast<std::uintptr_t>(proc);
+    }
+
+    const std::array<std::filesystem::path, 2> candidates = {
+        dll_dir / L"GPMITextureLoader.dll",
+        profile_dir / L"GPMITextureLoader.dll",
+    };
+
+    for (const auto &candidate : candidates)
+    {
+        if (!std::filesystem::is_regular_file(candidate))
+            continue;
+
+        HMODULE module = LoadLibraryW(candidate.c_str());
+        if (!module)
+        {
+            log().warn("failed to load separated texture loader DLL: " + candidate.string());
+            continue;
+        }
+
+        FARPROC proc = GetProcAddress(module, "GPMI_LoadTextureVariant");
+        if (!proc)
+        {
+            log().error("GPMITextureLoader.dll missing export GPMI_LoadTextureVariant: " + candidate.string());
+            FreeLibrary(module);
+            continue;
+        }
+
+        g_texture_loader_module = module;
+        log().info("loaded separated texture loader DLL: " + candidate.string());
+        return reinterpret_cast<std::uintptr_t>(proc);
+    }
+
+    log().warn("GPMITextureLoader.dll was not found next to GPMIUnitHook.dll or in profile dir; native return replacement is disabled");
+    return 0;
+}
 }
 
 GodotAbiConfig load_abi_config(const std::filesystem::path &profile_dir,
@@ -337,6 +382,10 @@ GodotAbiConfig load_abi_config(const std::filesystem::path &profile_dir,
             cfg.verbose_calls = parse_bool_value(verbose_calls->second);
         log().info("loaded ABI config: " + path.string());
     }
+
+    if (!cfg.texture_loader)
+        cfg.texture_loader = try_load_separated_texture_loader(profile_dir, dll_dir);
+
     return cfg;
 }
 
@@ -467,13 +516,13 @@ bool replace_return_with_texture(void *return_variant, const std::filesystem::pa
 {
     if (!g_texture_loader)
     {
-        log().warn("matched unit call but texture_loader_rva/abs is not configured; cannot replace return yet");
+        log().warn("matched unit call but no texture loader is available; expected GPMITextureLoader.dll next to GPMIUnitHook.dll or texture_loader_abs/rva in GPMIUnitHook.ini");
         return false;
     }
 
     const bool ok = call_texture_loader_seh(g_texture_loader, return_variant, replacement.c_str());
     if (!ok)
-        log().error("texture loader thunk crashed while loading: " + replacement.string());
+        log().error("texture loader failed while loading: " + replacement.string());
     return ok;
 }
 }
