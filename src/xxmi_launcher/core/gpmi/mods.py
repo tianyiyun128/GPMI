@@ -382,14 +382,21 @@ def _next_revision(profile_dir: Path) -> int:
         return int(time.time())
 
 
+def _portrait_type_for_character(cid: str) -> str:
+    cid = character_id(cid)
+    return cid if cid.endswith("_h") else f"{cid}_h"
+
+
 def _rule_for_slot(profile_dir: Path, outfit: dict, slot: str) -> dict:
     cid = character_id(str(outfit.get("character_id", "")))
     rel = _outfit_slot_rel(outfit, slot)
     abs_path = _portable_path(profile_dir / rel)
-    logical_path = f"{slot}/{cid}_default"
+    portrait_type = _portrait_type_for_character(cid)
+    logical_path = f"{slot}/{portrait_type}_default"
     return {
         "enabled": True,
         "character_id": cid,
+        "portrait_type": portrait_type,
         "outfit_id": str(outfit.get("id", "")),
         "source_name": str(outfit.get("source_name", "")),
         "slot": slot,
@@ -402,11 +409,12 @@ def _rule_for_slot(profile_dir: Path, outfit: dict, slot: str) -> dict:
 
 
 def build_live_portrait_manifest(profile_dir: Path) -> dict:
-    """Write the live portrait manifest consumed by the in-game GPMI bridge.
+    """Write the live portrait manifest consumed by the native unit hook.
 
-    Runtime switching happens in Godot's script/resource layer. The launcher
-    writes live_portraits.json with a monotonically increasing revision so the
-    in-game bridge can reload only when a selection changes.
+    The target game calls ImageLoader.unit(type, action, high_resolution).
+    For the current target, both Unit and Unit_H slots use the h-suffixed
+    portrait type in the logical key, e.g. Unit/jean_h_default and
+    Unit_H/jean_h_default.
     """
     ensure_game_profile(profile_dir)
     meta = load_mod_meta(profile_dir)
