@@ -61,7 +61,8 @@ bool g_config_loaded = false;
 
 std::string narrow(const std::filesystem::path &path)
 {
-    return path.u8string();
+    const auto text = path.u8string();
+    return std::string(reinterpret_cast<const char *>(text.data()), text.size());
 }
 
 std::filesystem::path module_dir()
