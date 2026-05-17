@@ -1,10 +1,12 @@
 #include "config.hpp"
-#include "hash.hpp"
 #include "log.hpp"
+
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <utility>
 
 namespace ptr
 {
@@ -25,7 +27,9 @@ static std::string trim(std::string s)
 static bool to_bool(const std::string &s, bool fallback)
 {
     std::string v = s;
-    std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
     if (v == "true" || v == "1" || v == "yes" || v == "on") return true;
     if (v == "false" || v == "0" || v == "no" || v == "off") return false;
     return fallback;
@@ -40,30 +44,12 @@ static std::string read_all(const std::filesystem::path &path)
     return ss.str();
 }
 
-static std::string json_string_field(const std::string &object, const char *name, const std::string &fallback = {})
-{
-    const std::regex re(std::string("\\\"") + name + "\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"");
-    std::smatch m;
-    if (std::regex_search(object, m, re))
-        return m[1].str();
-    return fallback;
-}
-
-static bool json_bool_field(const std::string &object, const char *name, bool fallback)
-{
-    const std::regex re(std::string("\\\"") + name + "\\\"\\s*:\\s*(true|false|1|0)", std::regex::icase);
-    std::smatch m;
-    if (std::regex_search(object, m, re))
-        return to_bool(m[1].str(), fallback);
-    return fallback;
-}
-
-static uint32_t json_uint_field(const std::string &object, const char *name, uint32_t fallback)
+static uint64_t json_uint64_field(const std::string &json, const char *name, uint64_t fallback)
 {
     const std::regex re(std::string("\\\"") + name + "\\\"\\s*:\\s*([0-9]+)");
     std::smatch m;
-    if (std::regex_search(object, m, re))
-        return static_cast<uint32_t>(std::stoul(m[1].str()));
+    if (std::regex_search(json, m, re))
+        return std::stoull(m[1].str());
     return fallback;
 }
 
@@ -75,18 +61,12 @@ bool ConfigStore::load(const std::filesystem::path &base_dir)
 
     load_ini(base_dir / "ptr_config.ini");
     log().open(config_.base_dir / config_.log_file);
-    load_hash_db(config_.base_dir / config_.hash_db_path);
+    load_manifest_summary(config_.base_dir / config_.manifest_path);
 
-    uint32_t metadata_rules = 0;
-    for (const auto &entry : config_.rules)
-    {
-        const Rule &rule = entry.second;
-        if (rule.width != 0 && rule.height != 0)
-            ++metadata_rules;
-    }
-
-    log().info("config loaded, rules=" + std::to_string(config_.rules.size()) +
-               ", metadata_rules=" + std::to_string(metadata_rules) +
+    log().info("config loaded, mode=" + config_.mode +
+               ", manifest=" + config_.manifest_path.string() +
+               ", revision=" + std::to_string(config_.manifest_revision) +
+               ", live_rules=" + std::to_string(config_.manifest_rules) +
                ", base=" + config_.base_dir.string());
     return true;
 }
@@ -115,6 +95,7 @@ void ConfigStore::load_ini(const std::filesystem::path &path)
         if (section == "core")
         {
             if (key == "enabled") config_.enabled = to_bool(value, config_.enabled);
+            else if (key == "mode") config_.mode = value;
             else if (key == "profile_dir")
             {
                 auto profile = path.parent_path() / value;
@@ -125,25 +106,22 @@ void ConfigStore::load_ini(const std::filesystem::path &path)
             }
             else if (key == "min_width") config_.min_width = static_cast<uint32_t>(std::stoul(value));
             else if (key == "min_height") config_.min_height = static_cast<uint32_t>(std::stoul(value));
-            else if (key == "hash_db") config_.hash_db_path = value;
+            else if (key == "manifest") config_.manifest_path = value;
             else if (key == "log_file") config_.log_file = value;
         }
     }
 }
 
-void ConfigStore::load_hash_db(const std::filesystem::path &path)
+void ConfigStore::load_manifest_summary(const std::filesystem::path &path)
 {
     const std::string json = read_all(path);
     if (json.empty())
     {
-        log().warn("hash_db not found or empty: " + path.string());
+        log().warn("live manifest not found or empty: " + path.string());
         return;
     }
 
-    config_.enabled = json_bool_field(json, "enabled", config_.enabled);
-    config_.min_width = json_uint_field(json, "min_width", config_.min_width);
-    config_.min_height = json_uint_field(json, "min_height", config_.min_height);
-
+    config_.manifest_revision = json_uint64_field(json, "revision", 0);
     const auto rules_pos = json.find("\"rules\"");
     if (rules_pos == std::string::npos)
         return;
@@ -152,45 +130,12 @@ void ConfigStore::load_hash_db(const std::filesystem::path &path)
     if (array_start == std::string::npos || array_end == std::string::npos)
         return;
 
-    const std::string array = json.substr(array_start + 1, array_end - array_start - 1);
-    size_t pos = 0;
-    while ((pos = array.find('{', pos)) != std::string::npos)
+    uint32_t count = 0;
+    for (size_t pos = array_start; pos < array_end; ++pos)
     {
-        const auto end = array.find('}', pos);
-        if (end == std::string::npos) break;
-        const std::string object = array.substr(pos, end - pos + 1);
-        pos = end + 1;
-
-        Rule rule;
-        rule.enabled = json_bool_field(object, "enabled", true);
-        rule.note = json_string_field(object, "note");
-        rule.character_id = json_string_field(object, "character_id");
-        rule.outfit_id = json_string_field(object, "outfit_id", "default");
-        rule.slot = json_string_field(object, "slot");
-        rule.hash_variant = json_string_field(object, "hash_variant");
-        rule.width = json_uint_field(object, "width", 0);
-        rule.height = json_uint_field(object, "height", 0);
-        rule.gpu_format = json_uint_field(object, "gpu_format", 0);
-
-        const std::string hash_text = json_string_field(object, "hash");
-        const std::string replacement = json_string_field(object, "replacement");
-        if (!rule.enabled || hash_text.empty() || replacement.empty())
-            continue;
-        if (!parse_hash_hex(hash_text, rule.hash))
-        {
-            log().warn("bad hash in rule: " + hash_text);
-            continue;
-        }
-        rule.replacement = std::filesystem::path(replacement);
-        config_.rules[rule.hash] = std::move(rule);
+        if (json[pos] == '{')
+            ++count;
     }
-}
-
-const Rule *ConfigStore::find(uint64_t hash) const
-{
-    const auto it = config_.rules.find(hash);
-    if (it == config_.rules.end() || !it->second.enabled)
-        return nullptr;
-    return &it->second;
+    config_.manifest_rules = count;
 }
 }

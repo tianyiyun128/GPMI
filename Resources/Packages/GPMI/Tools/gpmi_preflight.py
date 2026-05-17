@@ -35,7 +35,6 @@ def main() -> int:
         root / 'Themes' / 'Default' / 'MainWindow' / 'LauncherFrame' / 'background-image-gpmi.webp',
         root / 'Resources' / 'Packages' / 'GPMI' / 'Tools' / 'kernel_source' / 'build.cmd',
         root / 'Resources' / 'Packages' / 'GPMI' / 'Tools' / 'kernel_source' / 'src' / 'addon.cpp',
-        root / 'Resources' / 'Packages' / 'GPMI' / 'Tools' / 'kernel_source' / 'src' / 'ptrtex.cpp',
     ]
     for path in required:
         if path.exists():

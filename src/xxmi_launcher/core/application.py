@@ -2,7 +2,6 @@ import sys
 import logging
 import os
 import argparse
-import shutil
 import subprocess
 import time
 import traceback
@@ -254,6 +253,7 @@ class Application:
         # GPMI-only build: keep only the launcher shell and the GPMI package.
         Config.Launcher.active_importer = 'GPMI'
         Config.Launcher.enabled_importers = ['GPMI']
+        Config.Launcher.auto_close = False
 
         self.packages = [
             LauncherPackage(),
@@ -745,14 +745,15 @@ class Application:
             ))
         finally:
             self.is_locked = False
-            if not Config.Launcher.auto_close:
+            keep_launcher_open = Config.Launcher.active_importer == 'GPMI' or not Config.Launcher.auto_close
+            if keep_launcher_open:
                 self.gui.after(100, Events.Fire, Events.Application.Ready())
 
         # Track launch stats
         Config.Active.Importer.launch_count += 1
 
         # Close the launcher or reset its UI state
-        if Config.Launcher.auto_close or self.args.nogui:
+        if (Config.Launcher.auto_close and Config.Launcher.active_importer != 'GPMI') or self.args.nogui:
             Events.Fire(Events.Application.Close(delay=1000))
 
     def wrap_errors(self, callback, *args, **kwargs):

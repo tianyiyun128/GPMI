@@ -1,25 +1,25 @@
 from __future__ import annotations
 
 import json
-import re
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from core.gpmi.ptrtex import png_to_ptrtex
-
 REQUIRED_SLOTS = ("Unit", "Unit_H")
 SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tga"}
-GPMI_VERSION = "0.4.1"
+GPMI_VERSION = "0.5.0"
 DEFAULT_MIN_WIDTH = 200
 DEFAULT_MIN_HEIGHT = 200
-HASH_DB_SCHEMA_VERSION = 2
 USER_MODS_DIR = "Mods"
-RUNTIME_MODS_DIR = "RuntimeMods"
+RUNTIME_MODS_DIR = USER_MODS_DIR
 META_FILE = "mod_meta.json"
+RUNTIME_MANIFEST_FILE = "live_portraits.json"
+
+# Compatibility names kept so the current UI/package shell can call the same
+# Python entry points while the runtime data flow moves away from GPU hashes.
 HASH_DB_FILE = "hash_db.json"
 SOURCE_HASH_DB_FILE = HASH_DB_FILE
-RUNTIME_HASH_DB_FILE = "runtime_hash_db.json"
+RUNTIME_HASH_DB_FILE = RUNTIME_MANIFEST_FILE
 
 
 def sanitize_identifier(value: str, fallback: str = "default") -> str:
@@ -27,43 +27,6 @@ def sanitize_identifier(value: str, fallback: str = "default") -> str:
     safe = "".join(ch if ch.isalnum() or ch in "._- " else "_" for ch in text).strip()
     safe = "_".join(safe.split())
     return safe or fallback
-
-
-def normalize_hash(hash_text: str) -> str:
-    value = hash_text.strip().lower()
-    if value.startswith("0x"):
-        value = value[2:]
-    value = "".join(ch for ch in value if ch in "0123456789abcdef")
-    if not value:
-        raise ValueError("hash is empty")
-    if len(value) > 16:
-        raise ValueError("hash is longer than 64 bits")
-    return "0x" + value.rjust(16, "0")
-
-
-def infer_rule_identity(note: str, replacement: str = "") -> Tuple[str, str, str]:
-    source = (note or "").replace("\\", "/").strip("/")
-    parts = [part for part in source.split("/") if part]
-    slot = parts[0] if len(parts) >= 1 else "Unit"
-    raw_character = parts[1] if len(parts) >= 2 else "Unknown"
-    outfit = parts[2] if len(parts) >= 3 else "default"
-
-    if raw_character == "Unknown" and replacement:
-        stem = Path(replacement).stem
-        if stem.endswith("_default"):
-            stem = stem[:-8]
-        raw_character = stem or raw_character
-
-    match = re.match(r"^(.+)_([0-9]+)$", raw_character)
-    if match:
-        raw_character = match.group(1)
-        outfit = match.group(2)
-
-    return (
-        sanitize_identifier(raw_character, "Unknown"),
-        sanitize_identifier(outfit, "default"),
-        sanitize_identifier(slot, "Unit"),
-    )
 
 
 def character_id(value: str) -> str:
@@ -86,48 +49,19 @@ def _clamped_min(value: object, fallback: int) -> int:
     return max(parsed, fallback)
 
 
-def _rule_has_hash_variant(rule: dict) -> bool:
-    return bool(str(rule.get("hash_variant", "")).strip())
-
-
-def _hash_db_schema_summary(data: dict) -> dict:
-    rules = data.get("rules", []) if isinstance(data, dict) else []
-    if not isinstance(rules, list):
-        rules = []
-    variants: Dict[str, int] = {}
-    gpu_formats: Dict[str, int] = {}
-    new_format_rules = 0
-    legacy_rules = 0
-    for rule in rules:
-        if not isinstance(rule, dict) or not rule.get("hash"):
-            continue
-        variant = str(rule.get("hash_variant", "")).strip()
-        if variant:
-            new_format_rules += 1
-            variants[variant] = variants.get(variant, 0) + 1
-        else:
-            legacy_rules += 1
-        if rule.get("gpu_format") is not None:
-            gpu_key = str(rule.get("gpu_format"))
-            gpu_formats[gpu_key] = gpu_formats.get(gpu_key, 0) + 1
-    return {
-        "version": HASH_DB_SCHEMA_VERSION,
-        "rules": len(rules),
-        "new_format_rules": new_format_rules,
-        "legacy_rules": legacy_rules,
-        "hash_variants": dict(sorted(variants.items())),
-        "gpu_formats": dict(sorted(gpu_formats.items(), key=lambda item: int(item[0]) if item[0].isdigit() else item[0])),
-        "requires_hash_variant": True,
-    }
+def _portable_path(path: Path) -> str:
+    return str(path.resolve()).replace("\\", "/")
 
 
 def write_package_ini(importer_path: Path) -> None:
     common = (
         "[core]\n"
         "enabled=true\n"
+        "mode=godot_live_bridge\n"
         f"min_width={DEFAULT_MIN_WIDTH}\n"
         f"min_height={DEFAULT_MIN_HEIGHT}\n"
-        f"hash_db={RUNTIME_HASH_DB_FILE}\n"
+        f"manifest={RUNTIME_MANIFEST_FILE}\n"
+        f"hash_db={RUNTIME_MANIFEST_FILE}\n"
         "log_file=PortraitHashReplace.log\n"
     )
     (importer_path / "ptr_config.ini").write_text(common + "profile_dir=.\n", encoding="utf-8")
@@ -144,20 +78,11 @@ def ensure_package_profile(importer_path: Path) -> None:
 
 def ensure_game_profile(profile_dir: Path) -> None:
     profile_dir.mkdir(parents=True, exist_ok=True)
-    for rel in [USER_MODS_DIR, RUNTIME_MODS_DIR]:
-        (profile_dir / rel).mkdir(parents=True, exist_ok=True)
+    (profile_dir / USER_MODS_DIR).mkdir(parents=True, exist_ok=True)
     if not (profile_dir / META_FILE).exists():
         save_mod_meta(profile_dir, default_meta())
-    if not (profile_dir / RUNTIME_HASH_DB_FILE).exists():
-        save_runtime_hash_db(profile_dir, {
-            "enabled": True,
-            "min_width": DEFAULT_MIN_WIDTH,
-            "min_height": DEFAULT_MIN_HEIGHT,
-            "rules": [],
-            "gpmi_generated": {
-                "hash_db_schema": _hash_db_schema_summary({"rules": []}),
-            },
-        })
+    if not (profile_dir / RUNTIME_MANIFEST_FILE).exists():
+        save_runtime_manifest(profile_dir, default_runtime_manifest(profile_dir))
     write_runtime_ini(profile_dir)
 
 
@@ -173,12 +98,14 @@ def write_runtime_ini(
     min_height = _clamped_min(min_height, DEFAULT_MIN_HEIGHT)
     common = (
         "[core]\n"
-        f"enabled=true\n"
+        "enabled=true\n"
+        "mode=godot_live_bridge\n"
         f"min_width={min_width}\n"
         f"min_height={min_height}\n"
         f"profile_dir={profile_abs}\n"
-        f"hash_db={RUNTIME_HASH_DB_FILE}\n"
-        f"log_file=PortraitHashReplace.log\n"
+        f"manifest={RUNTIME_MANIFEST_FILE}\n"
+        f"hash_db={RUNTIME_MANIFEST_FILE}\n"
+        "log_file=PortraitHashReplace.log\n"
     )
     (profile_dir / "ptr_config.ini").write_text(common, encoding="utf-8")
     for mirror_dir in mirror_dirs or []:
@@ -188,9 +115,30 @@ def write_runtime_ini(
 
 def default_meta() -> dict:
     return {
-        "version": 1,
+        "version": 2,
+        "mode": "godot_live_bridge",
         "selected_outfits": {},
         "characters": {},
+    }
+
+
+def default_runtime_manifest(profile_dir: Path) -> dict:
+    return {
+        "version": 1,
+        "mode": "godot_live_bridge",
+        "enabled": True,
+        "revision": 0,
+        "updated_at": int(time.time()),
+        "profile_dir": _portable_path(profile_dir),
+        "source_mods_dir": _portable_path(profile_dir / USER_MODS_DIR),
+        "runtime_images_dir": _portable_path(profile_dir / USER_MODS_DIR),
+        "selected_outfits": {},
+        "rules": [],
+        "gpmi_generated": {
+            "active_characters": 0,
+            "active_slots": 0,
+            "issues": {},
+        },
     }
 
 
@@ -204,7 +152,8 @@ def load_mod_meta(profile_dir: Path) -> dict:
         return default_meta()
     if not isinstance(data, dict):
         return default_meta()
-    data.setdefault("version", 1)
+    data.setdefault("version", 2)
+    data.setdefault("mode", "godot_live_bridge")
     data.setdefault("selected_outfits", {})
     data.setdefault("characters", {})
     return data
@@ -215,9 +164,26 @@ def save_mod_meta(profile_dir: Path, meta: dict) -> None:
     (profile_dir / META_FILE).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def save_runtime_hash_db(profile_dir: Path, data: dict) -> None:
+def load_runtime_manifest(profile_dir: Path) -> dict:
+    path = profile_dir / RUNTIME_MANIFEST_FILE
+    if not path.is_file():
+        return default_runtime_manifest(profile_dir)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default_runtime_manifest(profile_dir)
+    if not isinstance(data, dict):
+        return default_runtime_manifest(profile_dir)
+    return data
+
+
+def save_runtime_manifest(profile_dir: Path, data: dict) -> None:
     profile_dir.mkdir(parents=True, exist_ok=True)
-    (profile_dir / RUNTIME_HASH_DB_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    (profile_dir / RUNTIME_MANIFEST_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def save_runtime_hash_db(profile_dir: Path, data: dict) -> None:
+    save_runtime_manifest(profile_dir, data)
 
 
 def _relative(profile_dir: Path, path: Path) -> str:
@@ -281,7 +247,7 @@ def _ensure_meta_character(meta: dict, cid: str) -> dict:
     return characters[cid]
 
 
-def _allocate_outfit_id(character_meta: dict, source_name: str, source_path: str) -> str:
+def _allocate_outfit_id(character_meta: dict, source_path: str) -> str:
     outfits = character_meta.setdefault("outfits", {})
     for oid, outfit in outfits.items():
         if outfit.get("source_path") == source_path:
@@ -316,29 +282,24 @@ def import_user_mod(profile_dir: Path, cid: str, source_name: str) -> dict:
     meta = load_mod_meta(profile_dir)
     char_meta = _ensure_meta_character(meta, cid)
     source_path = _relative(profile_dir, mod_dir)
-    outfit_id = _allocate_outfit_id(char_meta, source_name, source_path)
-    runtime_dir = profile_dir / RUNTIME_MODS_DIR / cid / outfit_id
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-
+    outfit_id = _allocate_outfit_id(char_meta, source_path)
     files: Dict[str, str] = {}
+    absolute_files: Dict[str, str] = {}
     source_files: Dict[str, str] = {}
-    image_info: Dict[str, dict] = {}
     for slot, src in slot_sources.items():
-        dst = runtime_dir / f"{cid}_{outfit_id}_{slot}.ptrtex"
-        width, height, fmt = png_to_ptrtex(src, dst)
-        files[slot] = _relative(profile_dir, dst)
+        files[slot] = _relative(profile_dir, src)
+        absolute_files[slot] = _portable_path(src)
         source_files[slot] = _relative(profile_dir, src)
-        image_info[slot] = {"width": width, "height": height, "format": fmt}
 
     outfit_meta = {
         "id": outfit_id,
         "character_id": cid,
         "source_name": source_name,
         "source_path": source_path,
-        "runtime_path": _relative(profile_dir, runtime_dir),
+        "runtime_path": source_path,
         "files": files,
+        "absolute_files": absolute_files,
         "source_files": source_files,
-        "image_info": image_info,
         "imported_at": int(time.time()),
     }
     char_meta.setdefault("outfits", {})[outfit_id] = outfit_meta
@@ -362,16 +323,26 @@ def import_all_ready_mods(profile_dir: Path) -> Tuple[List[dict], List[str]]:
     return imported, failures
 
 
+def _outfit_slot_rel(outfit: dict, slot: str) -> str:
+    source_rel = outfit.get("source_files", {}).get(slot, "")
+    if source_rel:
+        return source_rel
+    return outfit.get("files", {}).get(slot, "")
+
+
 def _outfit_file_exists(profile_dir: Path, outfit: dict, slot: str) -> bool:
-    rel = outfit.get("files", {}).get(slot, "")
-    return bool(rel) and (profile_dir / rel).is_file()
+    rel = _outfit_slot_rel(outfit, slot)
+    if not rel:
+        return False
+    path = profile_dir / rel
+    return path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
 
 
 def validate_imported_outfit(profile_dir: Path, outfit: dict) -> Tuple[bool, List[str]]:
     issues: List[str] = []
     for slot in REQUIRED_SLOTS:
         if not _outfit_file_exists(profile_dir, outfit, slot):
-            issues.append(f"missing runtime {slot} ptrtex")
+            issues.append(f"missing runtime {slot} image")
     return not issues, issues
 
 
@@ -396,16 +367,6 @@ def clear_selected_outfit(profile_dir: Path, cid: str) -> None:
     save_mod_meta(profile_dir, meta)
 
 
-def _hash_rule_identity(rule: dict) -> Tuple[str, str]:
-    cid = character_id(str(rule.get("character_id", ""))) if rule.get("character_id") else ""
-    slot = str(rule.get("slot", ""))
-    if not cid or not slot:
-        inferred_cid, _outfit, inferred_slot = infer_rule_identity(str(rule.get("note", "")), str(rule.get("replacement", "")))
-        cid = cid or character_id(inferred_cid)
-        slot = slot or inferred_slot
-    return cid, slot
-
-
 def _selected_outfit(meta: dict, cid: str) -> Optional[dict]:
     outfit_id = meta.get("selected_outfits", {}).get(cid)
     if not outfit_id:
@@ -413,145 +374,140 @@ def _selected_outfit(meta: dict, cid: str) -> Optional[dict]:
     return meta.get("characters", {}).get(cid, {}).get("outfits", {}).get(outfit_id)
 
 
-def build_runtime_hash_db(profile_dir: Path) -> dict:
-    """Merge externally generated hashes with the selected imported outfit metadata.
+def _next_revision(profile_dir: Path) -> int:
+    current = load_runtime_manifest(profile_dir)
+    try:
+        return int(current.get("revision", 0)) + 1
+    except Exception:
+        return int(time.time())
 
-    The in-game collector owns GPMI/hash_db.json. GPMI reads that source file and
-    writes GPMI/runtime_hash_db.json for the DLL. Current collector output must
-    include hash_variant on each hash rule. Legacy hash-only rules are deliberately
-    not enabled so stale hash caches cannot keep matching the wrong upload format.
+
+def _rule_for_slot(profile_dir: Path, outfit: dict, slot: str) -> dict:
+    cid = character_id(str(outfit.get("character_id", "")))
+    rel = _outfit_slot_rel(outfit, slot)
+    abs_path = _portable_path(profile_dir / rel)
+    logical_path = f"{slot}/{cid}_default"
+    return {
+        "enabled": True,
+        "character_id": cid,
+        "outfit_id": str(outfit.get("id", "")),
+        "source_name": str(outfit.get("source_name", "")),
+        "slot": slot,
+        "action": "default",
+        "cache_key": logical_path,
+        "logical_path": logical_path,
+        "replacement": abs_path,
+        "replacement_rel": rel,
+    }
+
+
+def build_live_portrait_manifest(profile_dir: Path) -> dict:
+    """Write the live portrait manifest consumed by the in-game GPMI bridge.
+
+    Runtime switching happens in Godot's script/resource layer. The launcher
+    writes live_portraits.json with a monotonically increasing revision so the
+    in-game bridge can reload only when a selection changes.
     """
-    source_hash_db_path = profile_dir / SOURCE_HASH_DB_FILE
-    if not source_hash_db_path.is_file():
-        raise FileNotFoundError(f"hash_db.json not found: {source_hash_db_path}")
-    data = json.loads(source_hash_db_path.read_text(encoding="utf-8"))
-    rules = data.get("rules", [])
-    if not isinstance(rules, list):
-        raise ValueError("hash_db.json field 'rules' must be a list")
-    data.pop("dump_unknown", None)
-    data["min_width"] = _clamped_min(data.get("min_width", DEFAULT_MIN_WIDTH), DEFAULT_MIN_WIDTH)
-    data["min_height"] = _clamped_min(data.get("min_height", DEFAULT_MIN_HEIGHT), DEFAULT_MIN_HEIGHT)
-    source_schema = _hash_db_schema_summary(data)
-
+    ensure_game_profile(profile_dir)
     meta = load_mod_meta(profile_dir)
-    hash_slots: Dict[str, set] = {}
-    identities: List[Tuple[str, str]] = []
-    rule_is_new_format: List[bool] = []
-    for rule in rules:
-        if not isinstance(rule, dict):
-            identities.append(("", ""))
-            rule_is_new_format.append(False)
-            continue
-        cid, slot = _hash_rule_identity(rule)
-        has_variant = _rule_has_hash_variant(rule)
-        identities.append((cid, slot))
-        rule_is_new_format.append(has_variant)
-        if cid and slot in REQUIRED_SLOTS and rule.get("hash") and has_variant:
-            hash_slots.setdefault(cid, set()).add(slot)
-
-    enabled_count = 0
-    disabled_count = 0
-    legacy_skipped_count = 0
+    rules: List[dict] = []
     issues: Dict[str, List[str]] = {}
 
-    for rule, (cid, slot), has_variant in zip(rules, identities, rule_is_new_format):
-        if not isinstance(rule, dict):
+    for cid in sorted(meta.get("selected_outfits", {}).keys()):
+        outfit = _selected_outfit(meta, cid)
+        if outfit is None:
+            issues.setdefault(cid, []).append("selected outfit metadata missing")
             continue
-        if "original_replacement" not in rule:
-            rule["original_replacement"] = str(rule.get("replacement", ""))
-        if rule.get("hash"):
-            rule["hash"] = normalize_hash(str(rule.get("hash")))
+        ready, outfit_issues = validate_imported_outfit(profile_dir, outfit)
+        if not ready:
+            issues.setdefault(cid, []).extend(outfit_issues)
+            continue
+        for slot in REQUIRED_SLOTS:
+            rules.append(_rule_for_slot(profile_dir, outfit, slot))
 
-        outfit = _selected_outfit(meta, cid) if cid else None
-        outfit_id = str(outfit.get("id", "")) if outfit else ""
-        can_enable = False
-        replacement = ""
-        if not has_variant:
-            if rule.get("hash"):
-                legacy_skipped_count += 1
-                if cid:
-                    issues.setdefault(cid, []).append("legacy hash rule skipped: missing hash_variant")
-        elif cid and slot in REQUIRED_SLOTS and outfit is not None:
-            character_hash_slots = hash_slots.get(cid, set())
-            if not all(required in character_hash_slots for required in REQUIRED_SLOTS):
-                issues.setdefault(cid, []).append("hash_db is missing Unit or Unit_H hash")
-            else:
-                ready, outfit_issues = validate_imported_outfit(profile_dir, outfit)
-                if not ready:
-                    issues.setdefault(cid, []).extend(outfit_issues)
-                else:
-                    replacement = outfit.get("files", {}).get(slot, "")
-                    can_enable = bool(replacement)
-
-        rule["enabled"] = bool(can_enable)
-        if can_enable:
-            rule["replacement"] = replacement
-            rule["character_id"] = cid
-            rule["outfit_id"] = outfit_id
-            rule["slot"] = slot
-            rule["note"] = f"{slot}/{cid}/{outfit_id}"
-            enabled_count += 1
-        else:
-            disabled_count += 1
-
-    data["gpmi_generated"] = {
+    generated = {
         "updated_at": int(time.time()),
-        "source_hash_db": SOURCE_HASH_DB_FILE,
-        "runtime_hash_db": RUNTIME_HASH_DB_FILE,
-        "hash_db_schema": source_schema,
+        "runtime_manifest": RUNTIME_MANIFEST_FILE,
         "selected_outfits": meta.get("selected_outfits", {}),
-        "enabled_rules": enabled_count,
-        "disabled_rules": disabled_count,
-        "legacy_skipped_rules": legacy_skipped_count,
+        "active_characters": len({rule["character_id"] for rule in rules}),
+        "active_slots": len(rules),
+        "enabled_rules": len(rules),
         "issues": {key: sorted(set(value)) for key, value in issues.items()},
     }
-    save_runtime_hash_db(profile_dir, data)
-    return data["gpmi_generated"]
+
+    data = {
+        "version": 1,
+        "mode": "godot_live_bridge",
+        "enabled": True,
+        "revision": _next_revision(profile_dir),
+        "updated_at": generated["updated_at"],
+        "profile_dir": _portable_path(profile_dir),
+        "source_mods_dir": _portable_path(profile_dir / USER_MODS_DIR),
+        "runtime_images_dir": _portable_path(profile_dir / USER_MODS_DIR),
+        "selected_outfits": meta.get("selected_outfits", {}),
+        "rules": rules,
+        "gpmi_generated": generated,
+    }
+    save_runtime_manifest(profile_dir, data)
+    return generated
 
 
-def _summarize_db(path: Path) -> dict:
+def build_runtime_hash_db(profile_dir: Path) -> dict:
+    return build_live_portrait_manifest(profile_dir)
+
+
+def _summarize_manifest(path: Path) -> dict:
     if not path.is_file():
-        return {"exists": False, "rules": 0, "enabled": 0, "characters": 0}
+        return {"exists": False, "rules": 0, "enabled": 0, "characters": 0, "active_slots": 0}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {"exists": True, "rules": 0, "enabled": 0, "characters": 0, "error": "invalid json"}
+        return {"exists": True, "rules": 0, "enabled": 0, "characters": 0, "active_slots": 0, "error": "invalid json"}
     rules = data.get("rules", []) if isinstance(data, dict) else []
     characters = set()
     enabled = 0
     for rule in rules if isinstance(rules, list) else []:
         if not isinstance(rule, dict):
             continue
-        cid, _slot = _hash_rule_identity(rule)
+        cid = character_id(str(rule.get("character_id", ""))) if rule.get("character_id") else ""
         if cid:
             characters.add(cid)
         if rule.get("enabled"):
             enabled += 1
-    schema = _hash_db_schema_summary(data) if isinstance(data, dict) else _hash_db_schema_summary({})
+    generated = data.get("gpmi_generated", {}) if isinstance(data, dict) else {}
     return {
         "exists": True,
         "rules": len(rules) if isinstance(rules, list) else 0,
         "enabled": enabled,
         "characters": len(characters),
-        "legacy_rules": schema.get("legacy_rules", 0),
-        "new_format_rules": schema.get("new_format_rules", 0),
-        "hash_variants": schema.get("hash_variants", {}),
-        "generated": data.get("gpmi_generated", {}) if isinstance(data, dict) else {},
+        "active_slots": generated.get("active_slots", enabled),
+        "active_characters": generated.get("active_characters", len(characters)),
+        "revision": data.get("revision", 0) if isinstance(data, dict) else 0,
+        "generated": generated,
+    }
+
+
+def summarize_live_portrait_manifest(profile_dir: Path) -> dict:
+    runtime = _summarize_manifest(profile_dir / RUNTIME_MANIFEST_FILE)
+    source = {
+        "exists": False,
+        "rules": 0,
+        "enabled": 0,
+        "characters": 0,
+    }
+    return {
+        "source": source,
+        "runtime": runtime,
+        "exists": runtime.get("exists", False),
+        "rules": runtime.get("rules", 0),
+        "enabled": runtime.get("enabled", 0),
+        "characters": runtime.get("characters", 0),
+        "active_slots": runtime.get("active_slots", 0),
+        "active_characters": runtime.get("active_characters", 0),
+        "revision": runtime.get("revision", 0),
+        "generated": runtime.get("generated", {}),
     }
 
 
 def summarize_hash_db(profile_dir: Path) -> dict:
-    source = _summarize_db(profile_dir / SOURCE_HASH_DB_FILE)
-    runtime = _summarize_db(profile_dir / RUNTIME_HASH_DB_FILE)
-    return {
-        "source": source,
-        "runtime": runtime,
-        "exists": source.get("exists", False),
-        "rules": source.get("rules", 0),
-        "enabled": runtime.get("enabled", 0),
-        "characters": source.get("characters", 0),
-        "legacy_rules": source.get("legacy_rules", 0),
-        "new_format_rules": source.get("new_format_rules", 0),
-        "hash_variants": source.get("hash_variants", {}),
-        "generated": runtime.get("generated", {}),
-    }
+    return summarize_live_portrait_manifest(profile_dir)

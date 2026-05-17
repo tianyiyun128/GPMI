@@ -16,10 +16,9 @@ from core.packages.migoto_package import MigotoManagerConfig
 from core.packages.model_importers.model_importer import ModelImporterConfig, ModelImporterPackage
 from core.gpmi.mods import (
     GPMI_VERSION,
-    HASH_DB_FILE,
     META_FILE,
     RUNTIME_HASH_DB_FILE,
-    build_runtime_hash_db,
+    build_live_portrait_manifest,
     ensure_game_profile,
     ensure_package_profile,
     game_profile_dir,
@@ -34,8 +33,8 @@ class GPMIConfig(ModelImporterConfig):
     """Godot Portrait Model Importer settings.
 
     GPMI keeps the XXMI launcher shell, but the runtime path is different:
-    a ReShade add-on hashes uploaded textures and replaces matching uploads from a
-    runtime_hash_db.json profile. The original game executable is not modified.
+    the Portrait Manager writes a live portrait manifest consumed by the in-game
+    GPMI bridge. The original game executable is not modified.
     """
     game_exe_names: List[str] = field(default_factory=lambda: [])
     game_folder_names: List[str] = field(default_factory=lambda: [])
@@ -216,22 +215,19 @@ class GPMIPackage(ModelImporterPackage):
         game_path = self.validate_game_path(Config.Active.Importer.game_folder)
         game_exe_path = self.validate_game_exe_path(game_path)
         profile_dir = game_profile_dir(game_exe_path)
-        source_db = profile_dir / HASH_DB_FILE
         runtime_db = profile_dir / RUNTIME_HASH_DB_FILE
         meta_path = profile_dir / META_FILE
         ensure_game_profile(profile_dir)
 
         needs_runtime_rebuild = not runtime_db.is_file()
-        if runtime_db.is_file() and source_db.is_file() and source_db.stat().st_mtime > runtime_db.stat().st_mtime:
-            needs_runtime_rebuild = True
         if runtime_db.is_file() and meta_path.is_file() and meta_path.stat().st_mtime > runtime_db.stat().st_mtime:
             needs_runtime_rebuild = True
 
-        if source_db.is_file() and needs_runtime_rebuild:
+        if needs_runtime_rebuild:
             try:
-                build_runtime_hash_db(profile_dir)
+                build_live_portrait_manifest(profile_dir)
             except Exception:
-                log.exception('Failed to build initial GPMI runtime hash DB')
+                log.exception('Failed to build initial GPMI live portrait manifest')
 
         write_game_runtime_ini(
             profile_dir,

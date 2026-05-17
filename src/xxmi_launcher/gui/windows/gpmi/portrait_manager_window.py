@@ -15,9 +15,8 @@ from core.gpmi.mods import (
     REQUIRED_SLOTS,
     RUNTIME_HASH_DB_FILE,
     RUNTIME_MODS_DIR,
-    SOURCE_HASH_DB_FILE,
     USER_MODS_DIR,
-    build_runtime_hash_db,
+    build_live_portrait_manifest,
     clear_selected_outfit,
     ensure_game_profile,
     game_profile_dir,
@@ -26,7 +25,8 @@ from core.gpmi.mods import (
     load_mod_meta,
     scan_user_mods,
     select_imported_outfit,
-    summarize_hash_db,
+    summarize_live_portrait_manifest,
+    validate_imported_outfit,
     write_runtime_ini,
 )
 
@@ -144,7 +144,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         )
         ctk.CTkLabel(
             self.outfits_panel,
-            text='Pick a character, pick an imported outfit, then apply the selection.',
+            text='Pick a character, pick an imported outfit, then apply the live selection.',
             anchor='w',
         ).grid(row=1, column=0, columnspan=2, sticky='ew', padx=12, pady=(0, 8))
 
@@ -159,7 +159,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         outfit_buttons.grid(row=3, column=0, columnspan=2, sticky='ew', padx=10, pady=(8, 10))
         ctk.CTkButton(outfit_buttons, text='Use Selected Outfit', command=self.use_selected_outfit).pack(side='left', padx=3)
         ctk.CTkButton(outfit_buttons, text='Disable Character', command=self.disable_selected_character).pack(side='left', padx=3)
-        ctk.CTkButton(outfit_buttons, text='Apply Selections', command=self.apply_runtime_rules).pack(side='right', padx=3)
+        ctk.CTkButton(outfit_buttons, text='Apply Live Selection', command=self.apply_runtime_rules).pack(side='right', padx=3)
 
     def _build_status(self):
         self.status_box = ctk.CTkTextbox(self, height=110, font=ctk.CTkFont(family='Consolas', size=12))
@@ -287,7 +287,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             self.refresh_outfits()
             self.refresh_status(
                 f'Imported and selected {outfit["character_id"]} / {outfit["source_name"]} -> {outfit["id"]}.\n'
-                f'Runtime enabled rules: {result.get("enabled_rules", 0)}.'
+                f'Live portrait slots: {result.get("active_slots", 0)}.'
             )
         except Exception as e:
             messagebox.showerror('GPMI', f'Failed to import mod:\n{e}')
@@ -304,7 +304,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             self.refresh_outfits()
             lines = [
                 f'Imported {len(imported)} mod(s).',
-                f'Runtime enabled rules: {result.get("enabled_rules", 0)}.',
+                f'Live portrait slots: {result.get("active_slots", 0)}.',
             ]
             if failures:
                 lines.append('')
@@ -366,7 +366,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             self.selected_outfit_id = selected_id if selected_id in outfits else (next(iter(sorted(outfits)), None))
         for outfit_id in sorted(outfits.keys()):
             outfit = outfits[outfit_id]
-            ready = all((profile / outfit.get('files', {}).get(slot, '')).is_file() for slot in REQUIRED_SLOTS)
+            ready, _issues = validate_imported_outfit(profile, outfit)
             mark = 'ACTIVE' if outfit_id == selected_id else 'READY' if ready else 'FIX'
             label = f'{mark}  {outfit.get("source_name", outfit_id)}  [{outfit_id}]'
             self.outfit_rows.append((outfit_id, outfit))
@@ -404,7 +404,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             self.refresh_outfits()
             self.refresh_status(
                 f'Active outfit: {self.selected_character_id} / {self.selected_outfit_id}\n'
-                f'Runtime enabled rules: {result.get("enabled_rules", 0)}.'
+                f'Live portrait slots: {result.get("active_slots", 0)}.'
             )
         except Exception as e:
             messagebox.showerror('GPMI', f'Failed to use selected outfit:\n{e}')
@@ -421,7 +421,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             result = self._write_runtime(profile)
             disabled = self.selected_character_id
             self.refresh_outfits()
-            self.refresh_status(f'Disabled {disabled}.\nRuntime enabled rules: {result.get("enabled_rules", 0)}.')
+            self.refresh_status(f'Disabled {disabled}.\nLive portrait slots: {result.get("active_slots", 0)}.')
         except Exception as e:
             messagebox.showerror('GPMI', f'Failed to disable character:\n{e}')
 
@@ -433,14 +433,14 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             result = self._write_runtime(profile)
             self.refresh_outfits()
             self.refresh_status(
-                f'Applied selections to {RUNTIME_HASH_DB_FILE}.\n'
-                f'Runtime enabled rules: {result.get("enabled_rules", 0)}.'
+                f'Applied live selection to {RUNTIME_HASH_DB_FILE}.\n'
+                f'Live portrait slots: {result.get("active_slots", 0)}.'
             )
         except Exception as e:
             messagebox.showerror('GPMI', f'Failed to apply selections:\n{e}')
 
     def _write_runtime(self, profile: Path) -> dict:
-        result = build_runtime_hash_db(profile)
+        result = build_live_portrait_manifest(profile)
         core_dir = Config.Importers.GPMI.Importer.importer_path / 'Core/GPMI'
         write_runtime_ini(
             profile,
@@ -457,18 +457,17 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             self._set_status(message or 'Select the exact game .exe in launcher settings first.')
             return
 
-        summary = summarize_hash_db(profile)
-        source = summary.get('source') or {}
+        summary = summarize_live_portrait_manifest(profile)
         runtime = summary.get('runtime') or {}
         meta = load_mod_meta(profile)
         imported_outfits = sum(len(c.get('outfits', {})) for c in meta.get('characters', {}).values())
         ready_mods = sum(1 for item in self.scanned_mods if item.get('ready'))
         self.summary_label.configure(
             text=(
-                f'hash_db: {source.get("rules", 0)} hashes / {source.get("characters", 0)} characters   '
+                f'Live: {runtime.get("active_slots", 0)} slots / {runtime.get("active_characters", 0)} characters   '
                 f'Mods: {ready_mods}/{len(self.scanned_mods)} ready   '
                 f'Imported: {imported_outfits} outfits   '
-                f'Runtime enabled: {runtime.get("enabled", 0)} rules'
+                f'Revision: {runtime.get("revision", 0)}'
             )
         )
 
@@ -476,12 +475,10 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         if message:
             lines.append(message)
             lines.append('')
-        if not source.get('exists'):
-            lines.append(f'Missing source hash DB: {profile / SOURCE_HASH_DB_FILE}')
         lines.extend([
             f'Mods folder: {profile / USER_MODS_DIR}',
-            f'Generated PTRTEX: {profile / RUNTIME_MODS_DIR}',
-            f'Runtime DB: {profile / RUNTIME_HASH_DB_FILE}',
+            f'Source images: {profile / RUNTIME_MODS_DIR}',
+            f'Live manifest: {profile / RUNTIME_HASH_DB_FILE}',
             f'Meta: {profile / META_FILE}',
         ])
         generated = runtime.get('generated') or {}

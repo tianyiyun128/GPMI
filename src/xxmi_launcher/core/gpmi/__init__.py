@@ -1,1 +1,1 @@
-"""GPMI profile, hash database and texture helper modules."""
+"""GPMI profile and live portrait manifest helpers."""

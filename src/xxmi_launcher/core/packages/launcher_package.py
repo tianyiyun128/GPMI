@@ -28,7 +28,7 @@ class LauncherManagerConfig:
     auto_update: bool = False
     pre_release: bool = False
     update_channel: str = 'Disabled'
-    auto_close: bool = True
+    auto_close: bool = False
     start_timeout: int = 30
     gui_theme: str = 'Default'
     theme_mode: str = 'System'

@@ -9,9 +9,7 @@ set(RESHADE_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/reshade/includ
 add_library(PortraitHashReplace SHARED
     src/addon.cpp
     src/config.cpp
-    src/hash.cpp
     src/log.cpp
-    src/ptrtex.cpp
 )
 
 target_include_directories(PortraitHashReplace PRIVATE
