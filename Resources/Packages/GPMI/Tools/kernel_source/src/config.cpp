@@ -77,7 +77,17 @@ bool ConfigStore::load(const std::filesystem::path &base_dir)
     log().open(config_.base_dir / config_.log_file);
     load_hash_db(config_.base_dir / config_.hash_db_path);
 
-    log().info("config loaded, rules=" + std::to_string(config_.rules.size()) + ", base=" + config_.base_dir.string());
+    uint32_t metadata_rules = 0;
+    for (const auto &entry : config_.rules)
+    {
+        const Rule &rule = entry.second;
+        if (rule.width != 0 && rule.height != 0)
+            ++metadata_rules;
+    }
+
+    log().info("config loaded, rules=" + std::to_string(config_.rules.size()) +
+               ", metadata_rules=" + std::to_string(metadata_rules) +
+               ", base=" + config_.base_dir.string());
     return true;
 }
 
@@ -154,6 +164,14 @@ void ConfigStore::load_hash_db(const std::filesystem::path &path)
         Rule rule;
         rule.enabled = json_bool_field(object, "enabled", true);
         rule.note = json_string_field(object, "note");
+        rule.character_id = json_string_field(object, "character_id");
+        rule.outfit_id = json_string_field(object, "outfit_id", "default");
+        rule.slot = json_string_field(object, "slot");
+        rule.hash_variant = json_string_field(object, "hash_variant");
+        rule.width = json_uint_field(object, "width", 0);
+        rule.height = json_uint_field(object, "height", 0);
+        rule.gpu_format = json_uint_field(object, "gpu_format", 0);
+
         const std::string hash_text = json_string_field(object, "hash");
         const std::string replacement = json_string_field(object, "replacement");
         if (!rule.enabled || hash_text.empty() || replacement.empty())
