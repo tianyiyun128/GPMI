@@ -48,6 +48,9 @@ thread_local PtrTex g_tls_tex;
 thread_local std::vector<uint8_t> g_tls_scratch;
 thread_local reshade::api::subresource_data g_tls_subresource{};
 
+uint32_t region_width(const reshade::api::resource_desc &desc, const reshade::api::subresource_box *box);
+uint32_t region_height(const reshade::api::resource_desc &desc, const reshade::api::subresource_box *box);
+
 uint64_t handle_of(reshade::api::resource r)
 {
     return static_cast<uint64_t>(r.handle);
