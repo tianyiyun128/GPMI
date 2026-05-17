@@ -10,7 +10,10 @@ from core.gpmi.ptrtex import png_to_ptrtex
 
 REQUIRED_SLOTS = ("Unit", "Unit_H")
 SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tga"}
-GPMI_VERSION = "0.4.0"
+GPMI_VERSION = "0.4.1"
+DEFAULT_MIN_WIDTH = 200
+DEFAULT_MIN_HEIGHT = 200
+HASH_DB_SCHEMA_VERSION = 2
 USER_MODS_DIR = "Mods"
 RUNTIME_MODS_DIR = "RuntimeMods"
 META_FILE = "mod_meta.json"
@@ -75,12 +78,55 @@ def game_profile_dir(game_exe_path: Path) -> Path:
     return Path(game_exe_path).resolve().parent / "GPMI"
 
 
+def _clamped_min(value: object, fallback: int) -> int:
+    try:
+        parsed = int(value)
+    except Exception:
+        parsed = fallback
+    return max(parsed, fallback)
+
+
+def _rule_has_hash_variant(rule: dict) -> bool:
+    return bool(str(rule.get("hash_variant", "")).strip())
+
+
+def _hash_db_schema_summary(data: dict) -> dict:
+    rules = data.get("rules", []) if isinstance(data, dict) else []
+    if not isinstance(rules, list):
+        rules = []
+    variants: Dict[str, int] = {}
+    gpu_formats: Dict[str, int] = {}
+    new_format_rules = 0
+    legacy_rules = 0
+    for rule in rules:
+        if not isinstance(rule, dict) or not rule.get("hash"):
+            continue
+        variant = str(rule.get("hash_variant", "")).strip()
+        if variant:
+            new_format_rules += 1
+            variants[variant] = variants.get(variant, 0) + 1
+        else:
+            legacy_rules += 1
+        if rule.get("gpu_format") is not None:
+            gpu_key = str(rule.get("gpu_format"))
+            gpu_formats[gpu_key] = gpu_formats.get(gpu_key, 0) + 1
+    return {
+        "version": HASH_DB_SCHEMA_VERSION,
+        "rules": len(rules),
+        "new_format_rules": new_format_rules,
+        "legacy_rules": legacy_rules,
+        "hash_variants": dict(sorted(variants.items())),
+        "gpu_formats": dict(sorted(gpu_formats.items(), key=lambda item: int(item[0]) if item[0].isdigit() else item[0])),
+        "requires_hash_variant": True,
+    }
+
+
 def write_package_ini(importer_path: Path) -> None:
     common = (
         "[core]\n"
         "enabled=true\n"
-        "min_width=32\n"
-        "min_height=32\n"
+        f"min_width={DEFAULT_MIN_WIDTH}\n"
+        f"min_height={DEFAULT_MIN_HEIGHT}\n"
         f"hash_db={RUNTIME_HASH_DB_FILE}\n"
         "log_file=PortraitHashReplace.log\n"
     )
@@ -105,26 +151,31 @@ def ensure_game_profile(profile_dir: Path) -> None:
     if not (profile_dir / RUNTIME_HASH_DB_FILE).exists():
         save_runtime_hash_db(profile_dir, {
             "enabled": True,
-            "min_width": 32,
-            "min_height": 32,
+            "min_width": DEFAULT_MIN_WIDTH,
+            "min_height": DEFAULT_MIN_HEIGHT,
             "rules": [],
+            "gpmi_generated": {
+                "hash_db_schema": _hash_db_schema_summary({"rules": []}),
+            },
         })
     write_runtime_ini(profile_dir)
 
 
 def write_runtime_ini(
     profile_dir: Path,
-    min_width: int = 32,
-    min_height: int = 32,
+    min_width: int = DEFAULT_MIN_WIDTH,
+    min_height: int = DEFAULT_MIN_HEIGHT,
     mirror_dirs: Optional[List[Path]] = None,
 ) -> None:
     profile_dir.mkdir(parents=True, exist_ok=True)
     profile_abs = profile_dir.resolve()
+    min_width = _clamped_min(min_width, DEFAULT_MIN_WIDTH)
+    min_height = _clamped_min(min_height, DEFAULT_MIN_HEIGHT)
     common = (
         "[core]\n"
         f"enabled=true\n"
-        f"min_width={int(min_width)}\n"
-        f"min_height={int(min_height)}\n"
+        f"min_width={min_width}\n"
+        f"min_height={min_height}\n"
         f"profile_dir={profile_abs}\n"
         f"hash_db={RUNTIME_HASH_DB_FILE}\n"
         f"log_file=PortraitHashReplace.log\n"
@@ -366,9 +417,9 @@ def build_runtime_hash_db(profile_dir: Path) -> dict:
     """Merge externally generated hashes with the selected imported outfit metadata.
 
     The in-game collector owns GPMI/hash_db.json. GPMI reads that source file and
-    writes GPMI/runtime_hash_db.json for the DLL. A character is enabled only when
-    both Unit and Unit_H hashes exist and the selected imported outfit has both
-    runtime ptrtex files.
+    writes GPMI/runtime_hash_db.json for the DLL. Current collector output must
+    include hash_variant on each hash rule. Legacy hash-only rules are deliberately
+    not enabled so stale hash caches cannot keep matching the wrong upload format.
     """
     source_hash_db_path = profile_dir / SOURCE_HASH_DB_FILE
     if not source_hash_db_path.is_file():
@@ -378,24 +429,32 @@ def build_runtime_hash_db(profile_dir: Path) -> dict:
     if not isinstance(rules, list):
         raise ValueError("hash_db.json field 'rules' must be a list")
     data.pop("dump_unknown", None)
+    data["min_width"] = _clamped_min(data.get("min_width", DEFAULT_MIN_WIDTH), DEFAULT_MIN_WIDTH)
+    data["min_height"] = _clamped_min(data.get("min_height", DEFAULT_MIN_HEIGHT), DEFAULT_MIN_HEIGHT)
+    source_schema = _hash_db_schema_summary(data)
 
     meta = load_mod_meta(profile_dir)
     hash_slots: Dict[str, set] = {}
     identities: List[Tuple[str, str]] = []
+    rule_is_new_format: List[bool] = []
     for rule in rules:
         if not isinstance(rule, dict):
             identities.append(("", ""))
+            rule_is_new_format.append(False)
             continue
         cid, slot = _hash_rule_identity(rule)
+        has_variant = _rule_has_hash_variant(rule)
         identities.append((cid, slot))
-        if cid and slot in REQUIRED_SLOTS and rule.get("hash"):
+        rule_is_new_format.append(has_variant)
+        if cid and slot in REQUIRED_SLOTS and rule.get("hash") and has_variant:
             hash_slots.setdefault(cid, set()).add(slot)
 
     enabled_count = 0
     disabled_count = 0
+    legacy_skipped_count = 0
     issues: Dict[str, List[str]] = {}
 
-    for rule, (cid, slot) in zip(rules, identities):
+    for rule, (cid, slot), has_variant in zip(rules, identities, rule_is_new_format):
         if not isinstance(rule, dict):
             continue
         if "original_replacement" not in rule:
@@ -407,7 +466,12 @@ def build_runtime_hash_db(profile_dir: Path) -> dict:
         outfit_id = str(outfit.get("id", "")) if outfit else ""
         can_enable = False
         replacement = ""
-        if cid and slot in REQUIRED_SLOTS and outfit is not None:
+        if not has_variant:
+            if rule.get("hash"):
+                legacy_skipped_count += 1
+                if cid:
+                    issues.setdefault(cid, []).append("legacy hash rule skipped: missing hash_variant")
+        elif cid and slot in REQUIRED_SLOTS and outfit is not None:
             character_hash_slots = hash_slots.get(cid, set())
             if not all(required in character_hash_slots for required in REQUIRED_SLOTS):
                 issues.setdefault(cid, []).append("hash_db is missing Unit or Unit_H hash")
@@ -434,9 +498,11 @@ def build_runtime_hash_db(profile_dir: Path) -> dict:
         "updated_at": int(time.time()),
         "source_hash_db": SOURCE_HASH_DB_FILE,
         "runtime_hash_db": RUNTIME_HASH_DB_FILE,
+        "hash_db_schema": source_schema,
         "selected_outfits": meta.get("selected_outfits", {}),
         "enabled_rules": enabled_count,
         "disabled_rules": disabled_count,
+        "legacy_skipped_rules": legacy_skipped_count,
         "issues": {key: sorted(set(value)) for key, value in issues.items()},
     }
     save_runtime_hash_db(profile_dir, data)
@@ -461,11 +527,15 @@ def _summarize_db(path: Path) -> dict:
             characters.add(cid)
         if rule.get("enabled"):
             enabled += 1
+    schema = _hash_db_schema_summary(data) if isinstance(data, dict) else _hash_db_schema_summary({})
     return {
         "exists": True,
         "rules": len(rules) if isinstance(rules, list) else 0,
         "enabled": enabled,
         "characters": len(characters),
+        "legacy_rules": schema.get("legacy_rules", 0),
+        "new_format_rules": schema.get("new_format_rules", 0),
+        "hash_variants": schema.get("hash_variants", {}),
         "generated": data.get("gpmi_generated", {}) if isinstance(data, dict) else {},
     }
 
@@ -480,5 +550,8 @@ def summarize_hash_db(profile_dir: Path) -> dict:
         "rules": source.get("rules", 0),
         "enabled": runtime.get("enabled", 0),
         "characters": source.get("characters", 0),
+        "legacy_rules": source.get("legacy_rules", 0),
+        "new_format_rules": source.get("new_format_rules", 0),
+        "hash_variants": source.get("hash_variants", {}),
         "generated": runtime.get("generated", {}),
     }
