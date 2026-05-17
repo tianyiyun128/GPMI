@@ -18,6 +18,13 @@ namespace gpmi
 {
 namespace
 {
+constexpr int kVariantBool = 1;
+constexpr int kVariantString = 4;
+constexpr int kVariantStringName = 21;
+constexpr size_t kGodotStringNameDataCNameOffset = 8;
+constexpr size_t kGodotStringNameDataNameOffset = 16;
+constexpr size_t kVariantDataOffset = 8;
+
 std::uintptr_t g_texture_loader = 0;
 
 std::unordered_map<std::string, std::string> read_ini(const std::filesystem::path &path)
@@ -49,21 +56,6 @@ std::unordered_map<std::string, std::string> read_ini(const std::filesystem::pat
     return values;
 }
 
-std::string read_utf32_string(const char32_t *data, size_t max_chars)
-{
-    std::string out;
-    for (size_t i = 0; i < max_chars; ++i)
-    {
-        const char32_t ch = data[i];
-        if (ch == 0)
-            break;
-        if (ch > 0x7f)
-            return {};
-        out.push_back(static_cast<char>(ch));
-    }
-    return out;
-}
-
 bool is_printable_ascii(const std::string &value)
 {
     if (value.empty() || value.size() > 128)
@@ -72,6 +64,20 @@ bool is_printable_ascii(const std::string &value)
     {
         if (static_cast<unsigned char>(ch) < 0x20 || static_cast<unsigned char>(ch) > 0x7e)
             return false;
+    }
+    return true;
+}
+
+bool is_valid_unit_token(const std::string &value)
+{
+    if (value.empty() || value.size() > 96)
+        return false;
+    for (char ch : value)
+    {
+        const auto c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c) || ch == '_' || ch == '-')
+            continue;
+        return false;
     }
     return true;
 }
@@ -85,70 +91,63 @@ bool parse_bool_value(const std::string &value)
     return lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on";
 }
 
-std::optional<std::string> scan_ascii_token_near(const void *base, size_t bytes, const std::string &needle)
+std::optional<void *> read_ptr_at(const void *base, size_t offset)
 {
-    if (needle.empty())
+    void *ptr = nullptr;
+    if (!base)
         return std::nullopt;
-    std::vector<unsigned char> buffer(bytes);
-    if (!safe_copy(buffer.data(), base, buffer.size()))
+    if (!safe_read_ptr(static_cast<const unsigned char *>(base) + offset, &ptr) || !ptr)
         return std::nullopt;
-    for (size_t i = 0; i + needle.size() <= buffer.size(); ++i)
-    {
-        if (std::memcmp(buffer.data() + i, needle.data(), needle.size()) == 0)
-            return needle;
-    }
-    return std::nullopt;
-}
-
-std::optional<std::string> scan_utf32_token_near(const void *base, size_t bytes, const std::string &needle)
-{
-    if (needle.empty())
-        return std::nullopt;
-    std::vector<unsigned char> buffer(bytes);
-    if (!safe_copy(buffer.data(), base, buffer.size()))
-        return std::nullopt;
-    std::vector<unsigned char> utf32;
-    utf32.reserve(needle.size() * 4);
-    for (char ch : needle)
-    {
-        utf32.push_back(static_cast<unsigned char>(ch));
-        utf32.push_back(0);
-        utf32.push_back(0);
-        utf32.push_back(0);
-    }
-    for (size_t i = 0; i + utf32.size() <= buffer.size(); ++i)
-    {
-        if (std::memcmp(buffer.data() + i, utf32.data(), utf32.size()) == 0)
-            return needle;
-    }
-    return std::nullopt;
+    return ptr;
 }
 
 std::optional<std::string> read_ascii_c_string(const void *address, size_t max_chars)
 {
-    std::vector<char> buffer(max_chars + 1);
-    if (!safe_copy(buffer.data(), address, max_chars))
+    if (!address || max_chars == 0)
         return std::nullopt;
-    buffer[max_chars] = 0;
-    size_t len = 0;
-    while (len < max_chars && buffer[len])
-        ++len;
-    if (len == 0 || len == max_chars)
-        return std::nullopt;
-    std::string value(buffer.data(), len);
-    if (!is_printable_ascii(value))
+
+    std::string value;
+    value.reserve(max_chars);
+    auto *cursor = static_cast<const char *>(address);
+    for (size_t i = 0; i < max_chars; ++i)
+    {
+        char ch = 0;
+        if (!safe_copy(&ch, cursor + i, sizeof(ch)))
+            return std::nullopt;
+        if (ch == 0)
+            break;
+        const auto c = static_cast<unsigned char>(ch);
+        if (c < 0x20 || c > 0x7e)
+            return std::nullopt;
+        value.push_back(ch);
+    }
+
+    if (value.empty() || value.size() >= max_chars)
         return std::nullopt;
     return value;
 }
 
 std::optional<std::string> read_utf32_c_string(const void *address, size_t max_chars)
 {
-    std::vector<char32_t> buffer(max_chars + 1);
-    if (!safe_copy(buffer.data(), address, max_chars * sizeof(char32_t)))
+    if (!address || max_chars == 0)
         return std::nullopt;
-    buffer[max_chars] = 0;
-    std::string value = read_utf32_string(buffer.data(), max_chars);
-    if (!is_printable_ascii(value))
+
+    std::string value;
+    value.reserve(max_chars);
+    auto *cursor = static_cast<const char32_t *>(address);
+    for (size_t i = 0; i < max_chars; ++i)
+    {
+        char32_t ch = 0;
+        if (!safe_copy(&ch, cursor + i, sizeof(ch)))
+            return std::nullopt;
+        if (ch == 0)
+            break;
+        if (ch < 0x20 || ch > 0x7e)
+            return std::nullopt;
+        value.push_back(static_cast<char>(ch));
+    }
+
+    if (value.empty() || value.size() >= max_chars)
         return std::nullopt;
     return value;
 }
@@ -178,52 +177,28 @@ std::optional<std::string> scan_printable_string_near(const void *base, size_t b
     return std::nullopt;
 }
 
-std::optional<std::string> scan_string_name_for_token(const void *string_name, const std::string &token)
-{
-    if (!string_name)
-        return std::nullopt;
-
-    void *data = nullptr;
-    if (safe_read_ptr(string_name, &data) && data)
-    {
-        if (auto value = scan_ascii_token_near(data, 0x200, token))
-            return value;
-        if (auto value = scan_utf32_token_near(data, 0x400, token))
-            return value;
-    }
-
-    if (auto value = scan_ascii_token_near(string_name, 0x40, token))
-        return value;
-    if (auto value = scan_utf32_token_near(string_name, 0x80, token))
-        return value;
-    return std::nullopt;
-}
-
 std::optional<std::string> try_string_name_to_ascii(const void *string_name)
 {
-    if (!string_name)
+    // Godot 4.3 StringName is exactly one _Data*.
+    // _Data begins with:
+    //   SafeRefCount refcount;
+    //   SafeNumeric<uint32_t> static_count;
+    //   const char *cname;
+    //   String name;
+    // On Windows x64 this places cname at +8 and the String CowData pointer at +16.
+    const auto data = read_ptr_at(string_name, 0);
+    if (!data)
         return std::nullopt;
 
-    void *data = nullptr;
-    if (!safe_read_ptr(string_name, &data) || !data)
-        return std::nullopt;
-
-    // Godot 4.3 StringName is a single _Data*.
-    // _Data layout begins with:
-    //   SafeRefCount refcount; SafeNumeric<uint32_t> static_count;
-    //   const char *cname; String name;
-    // On Windows x64 this places cname at +8 and String's CowData pointer at +16.
-    void *cname = nullptr;
-    if (safe_read_ptr(static_cast<const unsigned char *>(data) + 8, &cname) && cname)
+    if (auto cname = read_ptr_at(*data, kGodotStringNameDataCNameOffset))
     {
-        if (auto value = read_ascii_c_string(cname, 128))
+        if (auto value = read_ascii_c_string(*cname, 128))
             return value;
     }
 
-    void *string_ptr = nullptr;
-    if (safe_read_ptr(static_cast<const unsigned char *>(data) + 16, &string_ptr) && string_ptr)
+    if (auto name_ptr = read_ptr_at(*data, kGodotStringNameDataNameOffset))
     {
-        if (auto value = read_utf32_c_string(string_ptr, 128))
+        if (auto value = read_utf32_c_string(*name_ptr, 128))
             return value;
     }
 
@@ -235,29 +210,25 @@ std::optional<std::string> try_variant_string(const void *variant)
     if (!variant)
         return std::nullopt;
 
-    std::array<unsigned char, 64> bytes{};
-    if (!safe_copy(bytes.data(), variant, bytes.size()))
+    int type_tag = 0;
+    if (!safe_copy(&type_tag, variant, sizeof(type_tag)))
         return std::nullopt;
 
-    // Godot 4 Variant stores the type tag near the front. String is normally 4,
-    // StringName is normally 21. This decoder is deliberately defensive because
-    // the exact private layout is not ABI-stable.
-    const int type_tag = *reinterpret_cast<const int *>(bytes.data());
-    if (type_tag != 4 && type_tag != 21)
-        return std::nullopt;
-
-    for (size_t off = 8; off + sizeof(void *) <= bytes.size(); off += sizeof(void *))
+    if (type_tag == kVariantString)
     {
-        void *candidate = *reinterpret_cast<void **>(bytes.data() + off);
-        if (!candidate)
-            continue;
-        if (auto ascii = read_utf32_c_string(candidate, 128))
-            return ascii;
-        if (auto ascii = read_ascii_c_string(candidate, 128))
-            return ascii;
-        if (auto ascii = scan_printable_string_near(candidate, 0x200))
-            return ascii;
+        // Variant::_data contains a Godot String object. String is a CowData<char32_t>,
+        // whose first field is the char32_t data pointer.
+        if (auto string_data = read_ptr_at(variant, kVariantDataOffset))
+            return read_utf32_c_string(*string_data, 128);
+        return std::nullopt;
     }
+
+    if (type_tag == kVariantStringName)
+    {
+        // Variant::_data contains the embedded StringName object, not a pointer to it.
+        return try_string_name_to_ascii(static_cast<const unsigned char *>(variant) + kVariantDataOffset);
+    }
+
     return std::nullopt;
 }
 
@@ -285,13 +256,13 @@ std::optional<bool> try_variant_bool(const void *variant)
 {
     if (!variant)
         return std::nullopt;
-    std::array<unsigned char, 32> bytes{};
+    std::array<unsigned char, 16> bytes{};
     if (!safe_copy(bytes.data(), variant, bytes.size()))
         return std::nullopt;
     const int type_tag = *reinterpret_cast<const int *>(bytes.data());
-    if (type_tag != 1)
+    if (type_tag != kVariantBool)
         return std::nullopt;
-    return bytes[8] != 0;
+    return bytes[kVariantDataOffset] != 0;
 }
 
 bool call_texture_loader_seh(std::uintptr_t loader_address, void *return_variant, const wchar_t *path)
@@ -389,43 +360,23 @@ std::string describe_string_name_for_log(const void *string_name)
     if (auto decoded = try_decode_method_name(string_name))
         out << " decoded=\"" << *decoded << "\"";
 
-    void *data = nullptr;
-    if (safe_read_ptr(string_name, &data) && data)
+    if (auto data = read_ptr_at(string_name, 0))
     {
         std::array<unsigned char, 64> data_bytes{};
-        if (safe_copy(data_bytes.data(), data, data_bytes.size()))
-            out << " data=" << ptr_to_hex(data) << " data_bytes=" << hex_bytes(data_bytes.data(), 40);
-        void *cname = nullptr;
-        if (safe_read_ptr(static_cast<const unsigned char *>(data) + 8, &cname) && cname)
+        if (safe_copy(data_bytes.data(), *data, data_bytes.size()))
+            out << " data=" << ptr_to_hex(*data) << " data_bytes=" << hex_bytes(data_bytes.data(), 40);
+        if (auto cname = read_ptr_at(*data, kGodotStringNameDataCNameOffset))
         {
-            out << " cname=" << ptr_to_hex(cname);
-            if (auto value = read_ascii_c_string(cname, 128))
+            out << " cname=" << ptr_to_hex(*cname);
+            if (auto value = read_ascii_c_string(*cname, 128))
                 out << " cname_value=\"" << *value << "\"";
         }
-        void *name_ptr = nullptr;
-        if (safe_read_ptr(static_cast<const unsigned char *>(data) + 16, &name_ptr) && name_ptr)
+        if (auto name_ptr = read_ptr_at(*data, kGodotStringNameDataNameOffset))
         {
-            out << " name_ptr=" << ptr_to_hex(name_ptr);
-            if (auto value = read_utf32_c_string(name_ptr, 128))
+            out << " name_ptr=" << ptr_to_hex(*name_ptr);
+            if (auto value = read_utf32_c_string(*name_ptr, 128))
                 out << " name_value=\"" << *value << "\"";
         }
-    }
-
-    for (size_t off = 0; off + sizeof(void *) <= bytes.size(); off += sizeof(void *))
-    {
-        void *candidate = *reinterpret_cast<void **>(bytes.data() + off);
-        if (!candidate)
-            continue;
-        std::string found;
-        if (auto value = read_utf32_c_string(candidate, 96))
-            found = *value;
-        else if (auto value = read_ascii_c_string(candidate, 96))
-            found = *value;
-        else if (auto value = scan_printable_string_near(candidate, 0x100))
-            found = *value;
-
-        if (!found.empty())
-            out << " ptr+" << off << "=" << ptr_to_hex(candidate) << " -> \"" << found << "\"";
     }
     return out.str();
 }
@@ -447,38 +398,36 @@ std::string describe_variant_for_log(const void *variant)
         << " type_u64=" << type_u64
         << " bytes=" << hex_bytes(bytes.data(), 48);
 
-    if (auto inline_utf32 = read_utf32_c_string(static_cast<const unsigned char *>(variant) + 8, 96))
-        out << " inline_utf32=\"" << *inline_utf32 << "\"";
-    if (auto inline_ascii = read_ascii_c_string(static_cast<const unsigned char *>(variant) + 8, 96))
-        out << " inline_ascii=\"" << *inline_ascii << "\"";
-
-    for (size_t off = 0; off + sizeof(void *) <= bytes.size(); off += sizeof(void *))
-    {
-        void *candidate = *reinterpret_cast<void **>(bytes.data() + off);
-        if (!candidate)
-            continue;
-        std::string found;
-        if (auto value = read_utf32_c_string(candidate, 96))
-            found = *value;
-        else if (auto value = read_ascii_c_string(candidate, 96))
-            found = *value;
-        else if (auto value = scan_printable_string_near(candidate, 0x100))
-            found = *value;
-
-        if (!found.empty())
-            out << " ptr+" << off << "=" << ptr_to_hex(candidate) << " -> \"" << found << "\"";
-    }
-
     if (auto decoded = try_variant_string(variant))
         out << " decoded_string=\"" << *decoded << "\"";
     if (auto decoded_bool = try_variant_bool(variant))
         out << " decoded_bool=" << (*decoded_bool ? "true" : "false");
+
+    if (type_i32 != kVariantString && type_i32 != kVariantStringName)
+    {
+        for (size_t off = 0; off + sizeof(void *) <= bytes.size(); off += sizeof(void *))
+        {
+            void *candidate = *reinterpret_cast<void **>(bytes.data() + off);
+            if (!candidate)
+                continue;
+            std::string found;
+            if (auto value = read_utf32_c_string(candidate, 96))
+                found = *value;
+            else if (auto value = read_ascii_c_string(candidate, 96))
+                found = *value;
+            else if (auto value = scan_printable_string_near(candidate, 0x100))
+                found = *value;
+
+            if (!found.empty())
+                out << " ptr+" << off << "=" << ptr_to_hex(candidate) << " -> \"" << found << "\"";
+        }
+    }
     return out.str();
 }
 
 std::optional<UnitCall> try_decode_unit_call(void *, const void *method, const void **args, int arg_count)
 {
-    if (arg_count < 2 || args == nullptr)
+    if ((arg_count != 2 && arg_count != 3) || args == nullptr)
         return std::nullopt;
 
     auto method_name = try_string_name_to_ascii(method);
@@ -491,14 +440,17 @@ std::optional<UnitCall> try_decode_unit_call(void *, const void *method, const v
         call.type = *type;
     if (auto action = try_variant_string(args[1]))
         call.action = *action;
-    if (arg_count >= 3)
-    {
-        if (auto high = try_variant_bool(args[2]))
-            call.high_resolution = *high;
-    }
 
-    if (call.type.empty() || call.action.empty())
+    if (!is_valid_unit_token(call.type) || !is_valid_unit_token(call.action))
         return std::nullopt;
+
+    if (arg_count == 3)
+    {
+        auto high = try_variant_bool(args[2]);
+        if (!high)
+            return std::nullopt;
+        call.high_resolution = *high;
+    }
 
     call.logical_path = std::string(call.high_resolution ? "Unit_H/" : "Unit/") +
                         call.type + "_" + call.action;
