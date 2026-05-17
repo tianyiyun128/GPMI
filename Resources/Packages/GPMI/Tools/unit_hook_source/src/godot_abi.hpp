@@ -20,7 +20,7 @@ struct GodotAbiConfig
 {
     std::uintptr_t object_callp = 0;
     std::string object_callp_pattern;
-    size_t object_callp_patch_size = 16;
+    size_t object_callp_patch_size = 12;
     bool probe_only = false;
     bool verbose_calls = false;
 
