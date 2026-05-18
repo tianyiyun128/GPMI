@@ -58,6 +58,25 @@ std::unordered_map<std::string, std::string> read_ini(const std::filesystem::pat
     return values;
 }
 
+std::optional<std::uintptr_t> parse_number(const std::string &value)
+{
+    try
+    {
+        size_t idx = 0;
+        std::uintptr_t parsed = 0;
+        if (value.rfind("0x", 0) == 0 || value.rfind("0X", 0) == 0)
+            parsed = static_cast<std::uintptr_t>(std::stoull(value, &idx, 16));
+        else
+            parsed = static_cast<std::uintptr_t>(std::stoull(value, &idx, 10));
+        if (idx == value.size())
+            return parsed;
+    }
+    catch (...)
+    {
+    }
+    return std::nullopt;
+}
+
 bool is_printable_ascii(const std::string &value)
 {
     if (value.empty() || value.size() > 128)
@@ -182,12 +201,6 @@ std::optional<std::string> scan_printable_string_near(const void *base, size_t b
 std::optional<std::string> try_string_name_to_ascii(const void *string_name)
 {
     // Godot 4.3 StringName is exactly one _Data*.
-    // _Data begins with:
-    //   SafeRefCount refcount;
-    //   SafeNumeric<uint32_t> static_count;
-    //   const char *cname;
-    //   String name;
-    // On Windows x64 this places cname at +8 and the String CowData pointer at +16.
     const auto data = read_ptr_at(string_name, 0);
     if (!data)
         return std::nullopt;
@@ -218,18 +231,13 @@ std::optional<std::string> try_variant_string(const void *variant)
 
     if (type_tag == kVariantString)
     {
-        // Variant::_data contains a Godot String object. String is a CowData<char32_t>,
-        // whose first field is the char32_t data pointer.
         if (auto string_data = read_ptr_at(variant, kVariantDataOffset))
             return read_utf32_c_string(*string_data, 128);
         return std::nullopt;
     }
 
     if (type_tag == kVariantStringName)
-    {
-        // Variant::_data contains the embedded StringName object, not a pointer to it.
         return try_string_name_to_ascii(static_cast<const unsigned char *>(variant) + kVariantDataOffset);
-    }
 
     return std::nullopt;
 }
@@ -329,24 +337,13 @@ GodotAbiConfig load_abi_config(const std::filesystem::path &profile_dir,
                                const std::filesystem::path &dll_dir)
 {
     GodotAbiConfig cfg;
-    cfg.object_callp_pattern =
-        "41 57 41 56 41 55 41 54 55 57 56 53 48 81 EC 88 00 00 00";
 
     for (const auto &path : {profile_dir / "GPMIUnitHook.ini", dll_dir / "GPMIUnitHook.ini"})
     {
         if (!std::filesystem::is_regular_file(path))
             continue;
         const auto values = read_ini(path);
-        auto set_number = [&](const char *key, std::uintptr_t &target) {
-            const auto it = values.find(key);
-            if (it != values.end())
-            {
-                if (auto parsed = parse_number(it->second))
-                    target = *parsed;
-            }
-        };
-        set_number("object_callp_abs", cfg.object_callp);
-        set_number("texture_loader_abs", cfg.texture_loader);
+
         const auto rva = values.find("object_callp_rva");
         if (rva != values.end())
         {
@@ -356,36 +353,22 @@ GodotAbiConfig load_abi_config(const std::filesystem::path &profile_dir,
                     cfg.object_callp = reinterpret_cast<std::uintptr_t>(range->base) + *parsed;
             }
         }
-        const auto loader_rva = values.find("texture_loader_rva");
-        if (loader_rva != values.end())
-        {
-            if (auto parsed = parse_number(loader_rva->second))
-            {
-                if (auto range = main_module_range())
-                    cfg.texture_loader = reinterpret_cast<std::uintptr_t>(range->base) + *parsed;
-            }
-        }
-        const auto pattern = values.find("object_callp_pattern");
-        if (pattern != values.end() && !pattern->second.empty())
-            cfg.object_callp_pattern = pattern->second;
+
         const auto patch_size = values.find("object_callp_patch_size");
         if (patch_size != values.end())
         {
             if (auto parsed = parse_number(patch_size->second))
                 cfg.object_callp_patch_size = static_cast<size_t>(*parsed);
         }
-        const auto probe_only = values.find("probe_only");
-        if (probe_only != values.end())
-            cfg.probe_only = parse_bool_value(probe_only->second);
+
         const auto verbose_calls = values.find("verbose_calls");
         if (verbose_calls != values.end())
             cfg.verbose_calls = parse_bool_value(verbose_calls->second);
+
         log().info("loaded ABI config: " + path.string());
     }
 
-    if (!cfg.texture_loader)
-        cfg.texture_loader = try_load_separated_texture_loader(profile_dir, dll_dir);
-
+    cfg.texture_loader = try_load_separated_texture_loader(profile_dir, dll_dir);
     return cfg;
 }
 
@@ -516,7 +499,7 @@ bool replace_return_with_texture(void *return_variant, const std::filesystem::pa
 {
     if (!g_texture_loader)
     {
-        log().warn("matched unit call but no texture loader is available; expected GPMITextureLoader.dll next to GPMIUnitHook.dll or texture_loader_abs/rva in GPMIUnitHook.ini");
+        log().warn("matched unit call but no texture loader is available; expected GPMITextureLoader.dll next to GPMIUnitHook.dll");
         return false;
     }
 
