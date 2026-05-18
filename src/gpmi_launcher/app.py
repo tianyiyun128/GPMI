@@ -90,7 +90,7 @@ if __name__ == '__main__':
         # Pyinstaller (debug build): `GPMI\Resources\Bin\GPMI.exe`
         root_path = Path(sys.executable).parent.parent.parent
     else:
-        # Python (native): `GPMI\src\xxmi_launcher\app.py`
+        # Python (native): `GPMI\src\gpmi_launcher\app.py`
         root_path = Path(__file__).resolve().parent.parent.parent
 
     instance_id = int(time.time() * 1000) % 1000000
