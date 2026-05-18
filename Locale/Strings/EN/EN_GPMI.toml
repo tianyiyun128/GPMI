@@ -1,0 +1,339 @@
+[launcher_settings_language_label]
+src = "Language:"
+loc = "Language:"
+
+[settings_browse_path_button]
+src = "Browse..."
+loc = "Browse..."
+
+[general_settings_game_executable_label]
+src = "Game Executable:"
+loc = "Game Executable:"
+
+[general_settings_game_executable_tooltip]
+src = "Path to the exact Godot game .exe. GPMI does not accept a game folder or scan sibling executables."
+loc = "Path to the exact Godot game .exe. GPMI does not accept a game folder or scan sibling executables."
+
+[general_settings_game_executable_not_configured]
+src = "Game executable is not configured."
+loc = "Game executable is not configured."
+
+[general_settings_select_game_executable_title]
+src = "Select Godot Game Executable"
+loc = "Select Godot Game Executable"
+
+[general_settings_filetype_applications]
+src = "Applications"
+loc = "Applications"
+
+[general_settings_filetype_all_files]
+src = "All files"
+loc = "All files"
+
+[general_settings_select_game_executable_tooltip]
+src = "Select the exact Godot game executable. Automatic folder detection is disabled for GPMI."
+loc = "Select the exact Godot game executable. Automatic folder detection is disabled for GPMI."
+
+[general_settings_launch_options_label]
+src = "Launch Options:"
+loc = "Launch Options:"
+
+[general_settings_launch_options_about_button]
+src = "About..."
+loc = "About..."
+
+[general_settings_launch_options_entry_tooltip_default]
+src = "**Enabled**: Start game exe with specified command line arguments.\n**Disabled**: Ignore specified command line arguments and start game exe normally."
+loc = "**Enabled**: Start game exe with specified command line arguments.\n**Disabled**: Ignore specified command line arguments and start game exe normally."
+
+[general_settings_launch_options_about_button_tooltip]
+src = "Open {engine} command line arguments documentation webpage.\nNote: Game engine is customized by devs and some args may not work."
+loc = "Open {engine} command line arguments documentation webpage.\nNote: Game engine is customized by devs and some args may not work."
+
+[tool_bar_repair_button]
+src = "Repair {importer}"
+loc = "Repair {importer}"
+
+[tool_bar_check_updates_button]
+src = "Check For Updates"
+loc = "Check For Updates"
+
+[tool_bar_add_shortcut_button]
+src = "Add Desktop Shortcut"
+loc = "Add Desktop Shortcut"
+
+[tool_bar_optimize_mods_button]
+src = "Optimize Mods"
+loc = "Optimize Mods"
+
+[tool_bar_open_mods_button]
+src = "Open Mods Folder"
+loc = "Open Mods Folder"
+
+[tool_bar_portrait_manager_button]
+src = "Portrait Manager"
+loc = "Portrait Manager"
+
+[launcher_portrait_manager_button]
+src = "Portrait Manager"
+loc = "Portrait Manager"
+
+[launcher_start_button]
+src = "Start"
+loc = "Start"
+
+[launcher_install_button]
+src = "Install"
+loc = "Install"
+
+[launcher_select_games_text]
+src = "Select Games To Mod:"
+loc = "Select Games To Mod:"
+
+[portrait_manager_window_title]
+src = "GPMI Portrait Manager"
+loc = "GPMI Portrait Manager"
+
+[portrait_manager_title]
+src = "Portrait Manager"
+loc = "Portrait Manager"
+
+[portrait_manager_status_ready]
+src = "Ready."
+loc = "Ready."
+
+[portrait_manager_no_game_exe]
+src = "No game .exe selected"
+loc = "No game .exe selected"
+
+[portrait_manager_no_game_exe_selected]
+src = "No game .exe selected."
+loc = "No game .exe selected."
+
+[portrait_manager_unavailable]
+src = "Unavailable"
+loc = "Unavailable"
+
+[portrait_manager_game_label]
+src = "Game: {game_path}"
+loc = "Game: {game_path}"
+
+[portrait_manager_profile_label]
+src = "Profile: {profile_path}"
+loc = "Profile: {profile_path}"
+
+[portrait_manager_open_mods_folder_button]
+src = "Open Mods Folder"
+loc = "Open Mods Folder"
+
+[portrait_manager_open_gpmi_folder_button]
+src = "Open GPMI Folder"
+loc = "Open GPMI Folder"
+
+[portrait_manager_import_page_button]
+src = "Import Mods"
+loc = "Import Mods"
+
+[portrait_manager_select_page_button]
+src = "Select Mods"
+loc = "Select Mods"
+
+[portrait_manager_import_page_title]
+src = "1. Import Mods"
+loc = "1. Import Mods"
+
+[portrait_manager_import_help]
+src = "Expected: GPMI/Mods/<character>/<mod>/Unit and Unit_H, one image in each folder."
+loc = "Expected: GPMI/Mods/<character>/<mod>/Unit and Unit_H, one image in each folder."
+
+[portrait_manager_auto_import_game_button]
+src = "Auto Import Game Battle Portrait Mods"
+loc = "Auto Import Game Battle Portrait Mods"
+
+[portrait_manager_scan_mods_button]
+src = "Scan Mods"
+loc = "Scan Mods"
+
+[portrait_manager_open_mod_folder_button]
+src = "Open Mod Folder"
+loc = "Open Mod Folder"
+
+[portrait_manager_preview_title]
+src = "Mod Preview"
+loc = "Mod Preview"
+
+[portrait_manager_select_page_title]
+src = "2. Choose Active Mod"
+loc = "2. Choose Active Mod"
+
+[portrait_manager_select_help]
+src = "Pick a character, then click a portrait to use it immediately."
+loc = "Pick a character, then click a portrait to use it immediately."
+
+[portrait_manager_preview_select_item]
+src = "Select an item to preview Unit_H."
+loc = "Select an item to preview Unit_H."
+
+[portrait_manager_no_preview]
+src = "No preview"
+loc = "No preview"
+
+[portrait_manager_summary_mod_counts]
+src = "Mods {ready_count} ready / {broken_count} broken"
+loc = "Mods {ready_count} ready / {broken_count} broken"
+
+[portrait_manager_ready_badge]
+src = "READY"
+loc = "READY"
+
+[portrait_manager_broken_badge]
+src = "BROKEN"
+loc = "BROKEN"
+
+[portrait_manager_disable_mod_option]
+src = "Do Not Load Mod"
+loc = "Do Not Load Mod"
+
+[portrait_manager_scan_result]
+src = "Scanned {total_count} mod folder(s): {ready_count} ready / {broken_count} broken."
+loc = "Scanned {total_count} mod folder(s): {ready_count} ready / {broken_count} broken."
+
+[portrait_manager_sync_failures]
+src = "Sync failures:"
+loc = "Sync failures:"
+
+[portrait_manager_error_select_game_exe]
+src = "Select the exact game .exe in launcher settings first."
+loc = "Select the exact game .exe in launcher settings first."
+
+[portrait_manager_error_game_portrait_folders_missing]
+src = "Game portrait folders were not found:\n{folders}"
+loc = "Game portrait folders were not found:\n{folders}"
+
+[portrait_manager_auto_import_result]
+src = "Auto Import Game Battle Portrait Mods: copied {copied_count} portrait pair(s)."
+loc = "Auto Import Game Battle Portrait Mods: copied {copied_count} portrait pair(s)."
+
+[portrait_manager_target_mods_folder]
+src = "Target Mods folder: {folder_path}"
+loc = "Target Mods folder: {folder_path}"
+
+[portrait_manager_mods_ready_line]
+src = "Mods: {ready_count}/{total_count} ready."
+loc = "Mods: {ready_count}/{total_count} ready."
+
+[portrait_manager_skipped_invalid_names]
+src = "Skipped invalid names (expected character_h_*):"
+loc = "Skipped invalid names (expected character_h_*):"
+
+[portrait_manager_more_items]
+src = "  ... {more_count} more"
+loc = "  ... {more_count} more"
+
+[portrait_manager_skipped_unpaired_files]
+src = "Skipped unpaired files:"
+loc = "Skipped unpaired files:"
+
+[portrait_manager_error_auto_import_failed]
+src = "Failed to auto import game portrait mods:\n{error}"
+loc = "Failed to auto import game portrait mods:\n{error}"
+
+[portrait_manager_no_unit_h_preview]
+src = "No Unit_H preview available."
+loc = "No Unit_H preview available."
+
+[portrait_manager_preview_failed]
+src = "Preview failed:\n{error}"
+loc = "Preview failed:\n{error}"
+
+[portrait_manager_select_mod_preview]
+src = "Select a mod to preview Unit_H."
+loc = "Select a mod to preview Unit_H."
+
+[portrait_manager_no_mod_folders_found]
+src = "No mod folders found."
+loc = "No mod folders found."
+
+[portrait_manager_selected_mod_line]
+src = "Selected mod: {character_id} / {mod_name}"
+loc = "Selected mod: {character_id} / {mod_name}"
+
+[portrait_manager_folder_line]
+src = "Folder: {folder_path}"
+loc = "Folder: {folder_path}"
+
+[portrait_manager_status_line]
+src = "Status: {status}"
+loc = "Status: {status}"
+
+[portrait_manager_issues_line]
+src = "Issues: {issues}"
+loc = "Issues: {issues}"
+
+[portrait_manager_info_select_one_mod]
+src = "Select one mod first."
+loc = "Select one mod first."
+
+[portrait_manager_error_selected_mod_no_folder]
+src = "Selected mod has no source folder."
+loc = "Selected mod has no source folder."
+
+[portrait_manager_no_imported_mods]
+src = "No imported mods yet."
+loc = "No imported mods yet."
+
+[portrait_manager_select_character_prompt]
+src = "Select a character."
+loc = "Select a character."
+
+[portrait_manager_selected_character]
+src = "Selected character: {character_id}"
+loc = "Selected character: {character_id}"
+
+[portrait_manager_info_select_character_and_mod]
+src = "Select a character and a mod first."
+loc = "Select a character and a mod first."
+
+[portrait_manager_error_select_mod_failed]
+src = "Failed to select mod:\n{error}"
+loc = "Failed to select mod:\n{error}"
+
+[portrait_manager_info_select_character]
+src = "Select a character first."
+loc = "Select a character first."
+
+[portrait_manager_mod_disabled]
+src = "Mod disabled for {character_id}."
+loc = "Mod disabled for {character_id}."
+
+[portrait_manager_error_disable_mod_failed]
+src = "Failed to disable mod:\n{error}"
+loc = "Failed to disable mod:\n{error}"
+
+[portrait_manager_applied_selection]
+src = "Applied selection to {manifest_file}."
+loc = "Applied selection to {manifest_file}."
+
+[portrait_manager_error_apply_selection_failed]
+src = "Failed to apply selections:\n{error}"
+loc = "Failed to apply selections:\n{error}"
+
+[portrait_manager_mods_folder_line]
+src = "Mods folder: {folder_path}"
+loc = "Mods folder: {folder_path}"
+
+[portrait_manager_source_images_line]
+src = "Source images: {folder_path}"
+loc = "Source images: {folder_path}"
+
+[portrait_manager_live_manifest_line]
+src = "Live manifest: {file_path}"
+loc = "Live manifest: {file_path}"
+
+[portrait_manager_meta_line]
+src = "Meta: {file_path}"
+loc = "Meta: {file_path}"
+
+[portrait_manager_runtime_issues]
+src = "Runtime issues:"
+loc = "Runtime issues:"

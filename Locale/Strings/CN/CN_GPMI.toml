@@ -1,0 +1,339 @@
+[launcher_settings_language_label]
+src = "Language:"
+loc = "语言："
+
+[settings_browse_path_button]
+src = "Browse..."
+loc = "浏览..."
+
+[general_settings_game_executable_label]
+src = "Game Executable:"
+loc = "游戏 EXE："
+
+[general_settings_game_executable_tooltip]
+src = "Path to the exact Godot game .exe. GPMI does not accept a game folder or scan sibling executables."
+loc = "请选择准确的 Godot 游戏 .exe。GPMI 不接受游戏文件夹，也不会扫描同级可执行文件。"
+
+[general_settings_game_executable_not_configured]
+src = "Game executable is not configured."
+loc = "尚未配置游戏 EXE。"
+
+[general_settings_select_game_executable_title]
+src = "Select Godot Game Executable"
+loc = "选择 Godot 游戏 EXE"
+
+[general_settings_filetype_applications]
+src = "Applications"
+loc = "应用程序"
+
+[general_settings_filetype_all_files]
+src = "All files"
+loc = "所有文件"
+
+[general_settings_select_game_executable_tooltip]
+src = "Select the exact Godot game executable. Automatic folder detection is disabled for GPMI."
+loc = "选择准确的 Godot 游戏 EXE。GPMI 已禁用自动文件夹检测。"
+
+[general_settings_launch_options_label]
+src = "Launch Options:"
+loc = "启动参数："
+
+[general_settings_launch_options_about_button]
+src = "About..."
+loc = "说明..."
+
+[general_settings_launch_options_entry_tooltip_default]
+src = "**Enabled**: Start game exe with specified command line arguments.\n**Disabled**: Ignore specified command line arguments and start game exe normally."
+loc = "**启用**：使用指定命令行参数启动游戏 EXE。\n**禁用**：忽略命令行参数，正常启动游戏 EXE。"
+
+[general_settings_launch_options_about_button_tooltip]
+src = "Open {engine} command line arguments documentation webpage.\nNote: Game engine is customized by devs and some args may not work."
+loc = "打开 {engine} 命令行参数文档网页。\n注意：游戏引擎可能被开发者定制，部分参数不一定生效。"
+
+[tool_bar_repair_button]
+src = "Repair {importer}"
+loc = "修复 {importer}"
+
+[tool_bar_check_updates_button]
+src = "Check For Updates"
+loc = "检查更新"
+
+[tool_bar_add_shortcut_button]
+src = "Add Desktop Shortcut"
+loc = "添加桌面快捷方式"
+
+[tool_bar_optimize_mods_button]
+src = "Optimize Mods"
+loc = "优化 MOD"
+
+[tool_bar_open_mods_button]
+src = "Open Mods Folder"
+loc = "打开 MOD 文件夹"
+
+[tool_bar_portrait_manager_button]
+src = "Portrait Manager"
+loc = "立绘管理器"
+
+[launcher_portrait_manager_button]
+src = "Portrait Manager"
+loc = "立绘管理器"
+
+[launcher_start_button]
+src = "Start"
+loc = "启动"
+
+[launcher_install_button]
+src = "Install"
+loc = "安装"
+
+[launcher_select_games_text]
+src = "Select Games To Mod:"
+loc = "选择要加载 MOD 的游戏："
+
+[portrait_manager_window_title]
+src = "GPMI Portrait Manager"
+loc = "GPMI 立绘管理器"
+
+[portrait_manager_title]
+src = "Portrait Manager"
+loc = "立绘管理器"
+
+[portrait_manager_status_ready]
+src = "Ready."
+loc = "就绪。"
+
+[portrait_manager_no_game_exe]
+src = "No game .exe selected"
+loc = "未选择游戏 .exe"
+
+[portrait_manager_no_game_exe_selected]
+src = "No game .exe selected."
+loc = "未选择游戏 .exe。"
+
+[portrait_manager_unavailable]
+src = "Unavailable"
+loc = "不可用"
+
+[portrait_manager_game_label]
+src = "Game: {game_path}"
+loc = "游戏：{game_path}"
+
+[portrait_manager_profile_label]
+src = "Profile: {profile_path}"
+loc = "配置：{profile_path}"
+
+[portrait_manager_open_mods_folder_button]
+src = "Open Mods Folder"
+loc = "打开 MOD 文件夹"
+
+[portrait_manager_open_gpmi_folder_button]
+src = "Open GPMI Folder"
+loc = "打开 GPMI 文件夹"
+
+[portrait_manager_import_page_button]
+src = "Import Mods"
+loc = "导入 MOD"
+
+[portrait_manager_select_page_button]
+src = "Select Mods"
+loc = "选择 MOD"
+
+[portrait_manager_import_page_title]
+src = "1. Import Mods"
+loc = "1. 导入 MOD"
+
+[portrait_manager_import_help]
+src = "Expected: GPMI/Mods/<character>/<mod>/Unit and Unit_H, one image in each folder."
+loc = "需要的结构：GPMI/Mods/<角色>/<MOD>/Unit 和 Unit_H，每个文件夹中各一张图片。"
+
+[portrait_manager_auto_import_game_button]
+src = "Auto Import Game Battle Portrait Mods"
+loc = "自动导入游戏出战立绘 MOD"
+
+[portrait_manager_scan_mods_button]
+src = "Scan Mods"
+loc = "扫描 MOD"
+
+[portrait_manager_open_mod_folder_button]
+src = "Open Mod Folder"
+loc = "打开该 MOD 文件夹"
+
+[portrait_manager_preview_title]
+src = "Mod Preview"
+loc = "MOD 预览"
+
+[portrait_manager_select_page_title]
+src = "2. Choose Active Mod"
+loc = "2. 选择加载的 MOD"
+
+[portrait_manager_select_help]
+src = "Pick a character, then click a portrait to use it immediately."
+loc = "选择角色后，点击立绘即可立即加载。"
+
+[portrait_manager_preview_select_item]
+src = "Select an item to preview Unit_H."
+loc = "选择一项来预览 Unit_H。"
+
+[portrait_manager_no_preview]
+src = "No preview"
+loc = "无预览"
+
+[portrait_manager_summary_mod_counts]
+src = "Mods {ready_count} ready / {broken_count} broken"
+loc = "MOD：{ready_count} 个可用 / {broken_count} 个损坏"
+
+[portrait_manager_ready_badge]
+src = "READY"
+loc = "可用"
+
+[portrait_manager_broken_badge]
+src = "BROKEN"
+loc = "损坏"
+
+[portrait_manager_disable_mod_option]
+src = "Do Not Load Mod"
+loc = "不加载 MOD"
+
+[portrait_manager_scan_result]
+src = "Scanned {total_count} mod folder(s): {ready_count} ready / {broken_count} broken."
+loc = "已扫描 {total_count} 个 MOD 文件夹：{ready_count} 个可用 / {broken_count} 个损坏。"
+
+[portrait_manager_sync_failures]
+src = "Sync failures:"
+loc = "同步失败："
+
+[portrait_manager_error_select_game_exe]
+src = "Select the exact game .exe in launcher settings first."
+loc = "请先在启动器设置中选择准确的游戏 .exe。"
+
+[portrait_manager_error_game_portrait_folders_missing]
+src = "Game portrait folders were not found:\n{folders}"
+loc = "未找到游戏立绘文件夹：\n{folders}"
+
+[portrait_manager_auto_import_result]
+src = "Auto Import Game Battle Portrait Mods: copied {copied_count} portrait pair(s)."
+loc = "自动导入游戏出战立绘 MOD：已复制 {copied_count} 组立绘。"
+
+[portrait_manager_target_mods_folder]
+src = "Target Mods folder: {folder_path}"
+loc = "目标 MOD 文件夹：{folder_path}"
+
+[portrait_manager_mods_ready_line]
+src = "Mods: {ready_count}/{total_count} ready."
+loc = "MOD：{ready_count}/{total_count} 个可用。"
+
+[portrait_manager_skipped_invalid_names]
+src = "Skipped invalid names (expected character_h_*):"
+loc = "已跳过命名不正确的文件（应为 character_h_*）："
+
+[portrait_manager_more_items]
+src = "  ... {more_count} more"
+loc = "  ... 还有 {more_count} 项"
+
+[portrait_manager_skipped_unpaired_files]
+src = "Skipped unpaired files:"
+loc = "已跳过未配对文件："
+
+[portrait_manager_error_auto_import_failed]
+src = "Failed to auto import game portrait mods:\n{error}"
+loc = "自动导入游戏立绘 MOD 失败：\n{error}"
+
+[portrait_manager_no_unit_h_preview]
+src = "No Unit_H preview available."
+loc = "没有可用的 Unit_H 预览。"
+
+[portrait_manager_preview_failed]
+src = "Preview failed:\n{error}"
+loc = "预览失败：\n{error}"
+
+[portrait_manager_select_mod_preview]
+src = "Select a mod to preview Unit_H."
+loc = "选择一个 MOD 来预览 Unit_H。"
+
+[portrait_manager_no_mod_folders_found]
+src = "No mod folders found."
+loc = "未找到 MOD 文件夹。"
+
+[portrait_manager_selected_mod_line]
+src = "Selected mod: {character_id} / {mod_name}"
+loc = "已选择 MOD：{character_id} / {mod_name}"
+
+[portrait_manager_folder_line]
+src = "Folder: {folder_path}"
+loc = "文件夹：{folder_path}"
+
+[portrait_manager_status_line]
+src = "Status: {status}"
+loc = "状态：{status}"
+
+[portrait_manager_issues_line]
+src = "Issues: {issues}"
+loc = "问题：{issues}"
+
+[portrait_manager_info_select_one_mod]
+src = "Select one mod first."
+loc = "请先选择一个 MOD。"
+
+[portrait_manager_error_selected_mod_no_folder]
+src = "Selected mod has no source folder."
+loc = "所选 MOD 没有源文件夹。"
+
+[portrait_manager_no_imported_mods]
+src = "No imported mods yet."
+loc = "还没有导入的 MOD。"
+
+[portrait_manager_select_character_prompt]
+src = "Select a character."
+loc = "请选择一个角色。"
+
+[portrait_manager_selected_character]
+src = "Selected character: {character_id}"
+loc = "已选择角色：{character_id}"
+
+[portrait_manager_info_select_character_and_mod]
+src = "Select a character and a mod first."
+loc = "请先选择角色和 MOD。"
+
+[portrait_manager_error_select_mod_failed]
+src = "Failed to select mod:\n{error}"
+loc = "选择 MOD 失败：\n{error}"
+
+[portrait_manager_info_select_character]
+src = "Select a character first."
+loc = "请先选择一个角色。"
+
+[portrait_manager_mod_disabled]
+src = "Mod disabled for {character_id}."
+loc = "已为 {character_id} 禁用 MOD。"
+
+[portrait_manager_error_disable_mod_failed]
+src = "Failed to disable mod:\n{error}"
+loc = "禁用 MOD 失败：\n{error}"
+
+[portrait_manager_applied_selection]
+src = "Applied selection to {manifest_file}."
+loc = "已将选择应用到 {manifest_file}。"
+
+[portrait_manager_error_apply_selection_failed]
+src = "Failed to apply selections:\n{error}"
+loc = "应用选择失败：\n{error}"
+
+[portrait_manager_mods_folder_line]
+src = "Mods folder: {folder_path}"
+loc = "MOD 文件夹：{folder_path}"
+
+[portrait_manager_source_images_line]
+src = "Source images: {folder_path}"
+loc = "源图片：{folder_path}"
+
+[portrait_manager_live_manifest_line]
+src = "Live manifest: {file_path}"
+loc = "运行清单：{file_path}"
+
+[portrait_manager_meta_line]
+src = "Meta: {file_path}"
+loc = "元数据：{file_path}"
+
+[portrait_manager_runtime_issues]
+src = "Runtime issues:"
+loc = "运行时问题："

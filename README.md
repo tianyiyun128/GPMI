@@ -177,7 +177,7 @@ The launcher owns:
 <game exe folder>/GPMI/live_portraits.json
 ```
 
-`mod_meta.json` records imported outfits and the selected outfit per character.
+`mod_meta.json` records detected mods, imported metadata, and the selected mod per character. It stores both the internal outfit id and the source mod folder path so player choices survive launcher restarts and metadata refreshes.
 
 `live_portraits.json` is the runtime manifest watched by the native hook runtime. It records enabled replacement rules and absolute replacement image paths.
 
@@ -201,13 +201,43 @@ Example rule:
 1. Select the exact Godot game `.exe` in launcher settings.
 2. Open `GPMI Portrait Manager`.
 3. Open the Mods folder.
-4. Put portrait mods under `GPMI/Mods/<character>/<outfit>/Unit` and `Unit_H`.
+4. Put portrait mods under `GPMI/Mods/<character>/<mod>/Unit` and `Unit_H`.
 5. Click `Scan Mods`.
-6. Import one ready mod or import all ready mods.
-7. Select a character and outfit.
-8. Apply the live selection.
-9. Start the game.
-10. While the game is running, use Portrait Manager to switch outfits; the native `ImageLoader.unit()` hook must pick up manifest changes and replace future returned textures.
+6. Review the import page:
+   - `READY` mods have exactly one valid image in both `Unit` and `Unit_H`.
+   - `BROKEN` mods are shown in red and list the first detected issue.
+   - Ready mods are synced into launcher metadata automatically.
+7. Use the preview panel to inspect the high-resolution `Unit_H` portrait.
+8. Switch to `Select Mods`.
+9. Pick a character, then click a portrait entry to activate it immediately.
+10. Click `Do Not Load Mod` for a character to return that character to the original game portrait.
+11. Start the game.
+12. While the game is running, use Portrait Manager to switch portraits; the native `ImageLoader.unit()` hook must pick up manifest changes and replace future returned textures.
+
+The selected portrait is remembered per character. On the next launcher start, GPMI restores the previous active selection from `mod_meta.json` and rewrites the live manifest if the metadata had to be refreshed.
+
+### Importing Existing Game MOD Portraits
+
+For the current HilichurlsAmbition target, the game may already contain portrait mods in:
+
+```text
+<game exe folder>/MOD/Unit
+<game exe folder>/MOD/Unit_H
+```
+
+Portrait Manager can import these with `Auto Import Game Battle Portrait Mods`.
+
+Import rules:
+
+- The same file name must exist in both `MOD/Unit` and `MOD/Unit_H`.
+- File names must follow `character_h_*`, for example `amber_h_default.png`.
+- The `character` part is used as the character folder under `GPMI/Mods`.
+- The suffix after `character_h_` is used as the mod folder name.
+- Both normal and high-resolution images are copied into the required `Unit` and `Unit_H` layout.
+
+### Language Support
+
+The launcher language setting controls Portrait Manager text. English and Chinese translations are provided for the Portrait Manager, GPMI settings, and Portrait Manager entry buttons.
 
 ## Implementation Notes
 

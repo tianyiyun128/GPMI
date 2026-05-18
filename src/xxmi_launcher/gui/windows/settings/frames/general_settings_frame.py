@@ -74,7 +74,7 @@ class LanguageOptionMenu(UIOptionMenu):
 class GameFolderLabel(UILabel):
     def __init__(self, master):
         super().__init__(
-            text='Game Executable:',
+            text=L('general_settings_game_executable_label', 'Game Executable:'),
             font=('Microsoft YaHei', 14, 'bold'),
             fg_color='transparent',
             master=master)
@@ -121,13 +121,16 @@ class GameFolderEntry(UIEntry):
         return True
 
     def get_tooltip(self):
-        return 'Path to the exact Godot game .exe. GPMI does not accept a game folder or scan sibling executables.'
+        return L(
+            'general_settings_game_executable_tooltip',
+            'Path to the exact Godot game .exe. GPMI does not accept a game folder or scan sibling executables.'
+        )
 
 
 class GameFolderErrorLabel(UILabel):
     def __init__(self, master):
         super().__init__(
-            text='Game executable is not configured.',
+            text=L('general_settings_game_executable_not_configured', 'Game executable is not configured.'),
             font=('Microsoft YaHei', 14, 'bold'),
             text_color='#ff3636',
             fg_color='transparent',
@@ -178,8 +181,11 @@ class ChangeGameFolderButton(UIButton):
     def change_game_folder(self):
         exe_path = filedialog.askopenfilename(
             initialdir=self._initial_dir(),
-            title='Select Godot Game Executable',
-            filetypes=[('Applications', '*.exe'), ('All files', '*.*')]
+            title=L('general_settings_select_game_executable_title', 'Select Godot Game Executable'),
+            filetypes=[
+                (L('general_settings_filetype_applications', 'Applications'), '*.exe'),
+                (L('general_settings_filetype_all_files', 'All files'), '*.*'),
+            ],
         )
         if not exe_path:
             return
@@ -195,13 +201,19 @@ class DetectGameFolderButton(UIButton):
             height=36,
             font=('Asap', 18),
             master=master)
-        self.set_tooltip('Select the exact Godot game executable. Automatic folder detection is disabled for GPMI.')
+        self.set_tooltip(L(
+            'general_settings_select_game_executable_tooltip',
+            'Select the exact Godot game executable. Automatic folder detection is disabled for GPMI.'
+        ))
 
     def detect_game_folder(self):
         exe_path = filedialog.askopenfilename(
             initialdir=ChangeGameFolderButton._initial_dir(),
-            title='Select Godot Game Executable',
-            filetypes=[('Applications', '*.exe'), ('All files', '*.*')]
+            title=L('general_settings_select_game_executable_title', 'Select Godot Game Executable'),
+            filetypes=[
+                (L('general_settings_filetype_applications', 'Applications'), '*.exe'),
+                (L('general_settings_filetype_all_files', 'All files'), '*.*'),
+            ],
         )
         if exe_path:
             ChangeGameFolderButton._save_exe_path(Path(exe_path))

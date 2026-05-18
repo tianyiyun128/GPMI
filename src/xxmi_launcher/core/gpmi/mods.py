@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 REQUIRED_SLOTS = ("Unit", "Unit_H")
 SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tga"}
+GAME_PORTRAIT_NAME_PATTERN = re.compile(r"^(.+)_h_(.+)$")
 GPMI_VERSION = "0.5.0"
 DEFAULT_MIN_WIDTH = 200
 DEFAULT_MIN_HEIGHT = 200
@@ -35,6 +38,17 @@ def character_id(value: str) -> str:
 
 def source_outfit_name(value: str) -> str:
     return sanitize_identifier(value, "outfit").lower()
+
+
+def parse_game_portrait_name(file_name: str) -> Tuple[str, str] | None:
+    stem = Path(file_name).stem
+    match = GAME_PORTRAIT_NAME_PATTERN.match(stem)
+    if match is None:
+        return None
+    raw_character, raw_outfit = match.groups()
+    if not raw_character.strip() or not raw_outfit.strip():
+        return None
+    return character_id(raw_character), source_outfit_name(raw_outfit)
 
 
 def game_profile_dir(game_exe_path: Path) -> Path:
@@ -86,6 +100,76 @@ def ensure_game_profile(profile_dir: Path) -> None:
     write_runtime_ini(profile_dir)
 
 
+def _game_portrait_files(slot_dir: Path) -> Dict[str, Path]:
+    if not slot_dir.is_dir():
+        return {}
+    return {
+        path.name: path
+        for path in slot_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
+    }
+
+
+def _replace_slot_image(slot_dir: Path, src: Path) -> None:
+    slot_dir.mkdir(parents=True, exist_ok=True)
+    for existing in slot_dir.iterdir():
+        if existing.is_file() and existing.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES and existing.name != src.name:
+            existing.unlink()
+    shutil.copyfile(src, slot_dir / src.name)
+
+
+def import_game_portrait_mods(game_exe_path: Path, profile_dir: Path) -> dict:
+    """Copy game-deployed Unit/Unit_H portrait pairs into the user Mods layout."""
+    ensure_game_profile(profile_dir)
+    game_dir = Path(game_exe_path).resolve().parent
+    source_dirs = {
+        "Unit": game_dir / "MOD" / "Unit",
+        "Unit_H": game_dir / "MOD" / "Unit_H",
+    }
+
+    missing_dirs = [str(path) for path in source_dirs.values() if not path.is_dir()]
+    if missing_dirs:
+        return {
+            "copied": [],
+            "skipped_invalid": [],
+            "skipped_unpaired": [],
+            "missing_dirs": missing_dirs,
+            "target_mods_dir": str(profile_dir / USER_MODS_DIR),
+        }
+
+    slot_files = {slot: _game_portrait_files(path) for slot, path in source_dirs.items()}
+    paired_names = sorted(set(slot_files["Unit"]) & set(slot_files["Unit_H"]), key=str.lower)
+    unpaired_names = sorted(set(slot_files["Unit"]) ^ set(slot_files["Unit_H"]), key=str.lower)
+
+    copied: List[dict] = []
+    skipped_invalid: List[str] = []
+    target_mods_dir = profile_dir / USER_MODS_DIR
+
+    for file_name in paired_names:
+        parsed = parse_game_portrait_name(file_name)
+        if parsed is None:
+            skipped_invalid.append(file_name)
+            continue
+        cid, outfit_name = parsed
+        outfit_dir = target_mods_dir / cid / outfit_name
+        _replace_slot_image(outfit_dir / "Unit", slot_files["Unit"][file_name])
+        _replace_slot_image(outfit_dir / "Unit_H", slot_files["Unit_H"][file_name])
+        copied.append({
+            "character_id": cid,
+            "outfit_name": outfit_name,
+            "file_name": file_name,
+            "target_path": str(outfit_dir),
+        })
+
+    return {
+        "copied": copied,
+        "skipped_invalid": skipped_invalid,
+        "skipped_unpaired": unpaired_names,
+        "missing_dirs": [],
+        "target_mods_dir": str(target_mods_dir),
+    }
+
+
 def write_runtime_ini(
     profile_dir: Path,
     min_width: int = DEFAULT_MIN_WIDTH,
@@ -115,9 +199,10 @@ def write_runtime_ini(
 
 def default_meta() -> dict:
     return {
-        "version": 2,
+        "version": 3,
         "mode": "godot_live_bridge",
         "selected_outfits": {},
+        "selected_sources": {},
         "characters": {},
     }
 
@@ -133,6 +218,7 @@ def default_runtime_manifest(profile_dir: Path) -> dict:
         "source_mods_dir": _portable_path(profile_dir / USER_MODS_DIR),
         "runtime_images_dir": _portable_path(profile_dir / USER_MODS_DIR),
         "selected_outfits": {},
+        "selected_sources": {},
         "rules": [],
         "gpmi_generated": {
             "active_characters": 0,
@@ -152,9 +238,10 @@ def load_mod_meta(profile_dir: Path) -> dict:
         return default_meta()
     if not isinstance(data, dict):
         return default_meta()
-    data.setdefault("version", 2)
+    data.setdefault("version", 3)
     data.setdefault("mode", "godot_live_bridge")
     data.setdefault("selected_outfits", {})
+    data.setdefault("selected_sources", {})
     data.setdefault("characters", {})
     return data
 
@@ -303,7 +390,13 @@ def import_user_mod(profile_dir: Path, cid: str, source_name: str) -> dict:
         "imported_at": int(time.time()),
     }
     char_meta.setdefault("outfits", {})[outfit_id] = outfit_meta
-    meta.setdefault("selected_outfits", {}).setdefault(cid, outfit_id)
+    selected_outfits = meta.setdefault("selected_outfits", {})
+    selected_sources = meta.setdefault("selected_sources", {})
+    if cid not in selected_outfits:
+        selected_outfits[cid] = outfit_id
+        selected_sources[cid] = source_path
+    elif selected_outfits.get(cid) == outfit_id:
+        selected_sources[cid] = source_path
     save_mod_meta(profile_dir, meta)
     return outfit_meta
 
@@ -357,13 +450,18 @@ def select_imported_outfit(profile_dir: Path, cid: str, outfit_id: str) -> dict:
     if not ready:
         raise ValueError("outfit is incomplete: " + "; ".join(issues))
     meta.setdefault("selected_outfits", {})[cid] = outfit_id
+    source_path = outfit.get("source_path")
+    if source_path:
+        meta.setdefault("selected_sources", {})[cid] = source_path
     save_mod_meta(profile_dir, meta)
     return outfit
 
 
 def clear_selected_outfit(profile_dir: Path, cid: str) -> None:
     meta = load_mod_meta(profile_dir)
-    meta.setdefault("selected_outfits", {}).pop(character_id(cid), None)
+    cid = character_id(cid)
+    meta.setdefault("selected_outfits", {}).pop(cid, None)
+    meta.setdefault("selected_sources", {}).pop(cid, None)
     save_mod_meta(profile_dir, meta)
 
 
@@ -437,6 +535,7 @@ def build_live_portrait_manifest(profile_dir: Path) -> dict:
         "updated_at": int(time.time()),
         "runtime_manifest": RUNTIME_MANIFEST_FILE,
         "selected_outfits": meta.get("selected_outfits", {}),
+        "selected_sources": meta.get("selected_sources", {}),
         "active_characters": len({rule["character_id"] for rule in rules}),
         "active_slots": len(rules),
         "enabled_rules": len(rules),
@@ -453,6 +552,7 @@ def build_live_portrait_manifest(profile_dir: Path) -> dict:
         "source_mods_dir": _portable_path(profile_dir / USER_MODS_DIR),
         "runtime_images_dir": _portable_path(profile_dir / USER_MODS_DIR),
         "selected_outfits": meta.get("selected_outfits", {}),
+        "selected_sources": meta.get("selected_sources", {}),
         "rules": rules,
         "gpmi_generated": generated,
     }

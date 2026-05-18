@@ -276,7 +276,7 @@ class PortraitManagerMainButton(MainActionButton):
             bg_image_path='button-start-background.png',
             bg_width=280,
             bg_height=64,
-            text='Portrait Manager',
+            text=L('launcher_portrait_manager_button', 'Portrait Manager'),
             text_x_offset=8,
             text_y_offset=-1,
             font=('Microsoft YaHei', 18, 'bold'),

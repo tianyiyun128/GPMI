@@ -196,7 +196,7 @@ class OpenPortraitManagerButton(ToolsBarButton):
         super().__init__(
             y=605,
             button_image_path='button-tool-portrait-manager.png',
-            text='Portrait Manager',
+            text=L('tool_bar_portrait_manager_button', 'Portrait Manager'),
             command=lambda: Events.Fire(Events.Application.OpenPortraitManager()),
             master=master)
         self.subscribe(Events.Application.LoadImporter, self.handle_load_importer)
