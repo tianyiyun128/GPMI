@@ -19,15 +19,11 @@ struct UnitCall
 struct GodotAbiConfig
 {
     std::uintptr_t object_callp = 0;
-    std::string object_callp_pattern;
     size_t object_callp_patch_size = 12;
     bool probe_only = false;
     bool verbose_calls = false;
 
-    // Optional function inside the target process. Its ABI is intentionally
-    // simple so a small game-version-specific thunk can be added later without
-    // changing this hook:
-    //   bool __fastcall loader(void *out_variant, const wchar_t *path)
+    // Resolved automatically from GPMITextureLoader.dll.
     std::uintptr_t texture_loader = 0;
 };
 
