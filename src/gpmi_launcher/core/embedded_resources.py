@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
+import os
+import tempfile
 import zlib
 from functools import lru_cache
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Iterable, Iterator
 
 
@@ -107,6 +110,61 @@ class EmbeddedResources:
             if tail and '/' not in tail:
                 result.add(f'{prefix}{tail}' if prefix else tail)
         return sorted(result)
+
+    @classmethod
+    @lru_cache(maxsize=1)
+    def bundle_digest(cls) -> str:
+        cls._load_bundle()
+        if not cls._files:
+            return 'empty'
+        digest = hashlib.sha256()
+        for rel in sorted(cls._files):
+            digest.update(rel.encode('utf-8'))
+            digest.update(b'\0')
+            digest.update(cls._files[rel].encode('ascii'))
+            digest.update(b'\0')
+        return digest.hexdigest()[:16]
+
+    @staticmethod
+    def cache_root(app_name: str = 'GPMI') -> Path:
+        base = os.environ.get('LOCALAPPDATA') or os.environ.get('APPDATA') or tempfile.gettempdir()
+        return Path(base) / app_name / 'EmbeddedResources'
+
+    @staticmethod
+    def _path_from_resource(rel_path: str) -> Path:
+        return Path(*PurePosixPath(rel_path).parts)
+
+    @classmethod
+    def extract_file(cls, path: str | PurePosixPath, target_root: Path | str | None = None) -> Path:
+        rel = normalize_resource_path(path)
+        root = Path(target_root) if target_root is not None else cls.cache_root() / cls.bundle_digest()
+        dst_path = root / cls._path_from_resource(rel)
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+        data = cls.read_bytes(rel)
+        if not dst_path.exists() or dst_path.stat().st_size != len(data) or dst_path.read_bytes() != data:
+            tmp_path = dst_path.with_name(f'{dst_path.name}.tmp')
+            tmp_path.write_bytes(data)
+            os.replace(tmp_path, dst_path)
+
+        return dst_path
+
+    @classmethod
+    def extract_dir(cls, directory: str | PurePosixPath, target_root: Path | str | None = None) -> Path:
+        rel_dir = normalize_resource_path(directory)
+        if rel_dir and not cls.is_dir(rel_dir):
+            raise FileNotFoundError(f'Embedded resource directory not found: {rel_dir}')
+
+        root = Path(target_root) if target_root is not None else cls.cache_root() / cls.bundle_digest()
+        extracted = False
+        for rel in cls.iter_files(rel_dir):
+            cls.extract_file(rel, root)
+            extracted = True
+
+        if rel_dir and not extracted:
+            (root / cls._path_from_resource(rel_dir)).mkdir(parents=True, exist_ok=True)
+
+        return root / cls._path_from_resource(rel_dir) if rel_dir else root
 
 
 class EmbeddedResourcePath:
