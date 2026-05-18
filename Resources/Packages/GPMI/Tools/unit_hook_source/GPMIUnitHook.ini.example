@@ -8,11 +8,6 @@
 #
 # object_callp_rva=0x123456
 #
-# Keep this enabled only while validating a new RVA. Probe mode installs the
-# hook and logs observed unit() calls, but does not replace return values.
-#
-# probe_only=1
-#
 # Optional diagnostic mode. This samples Object::callp method names so we can
 # distinguish "wrong hook point" from "unit argument decoding failed".
 #
