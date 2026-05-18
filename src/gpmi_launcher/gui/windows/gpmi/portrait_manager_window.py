@@ -15,7 +15,7 @@ from core.locale_manager import L
 from core.gpmi.mods import (
     META_FILE,
     REQUIRED_SLOTS,
-    RUNTIME_HASH_DB_FILE,
+    RUNTIME_MANIFEST_FILE,
     RUNTIME_MODS_DIR,
     USER_MODS_DIR,
     build_live_portrait_manifest,
@@ -29,7 +29,6 @@ from core.gpmi.mods import (
     select_imported_outfit,
     save_mod_meta,
     summarize_live_portrait_manifest,
-    write_runtime_ini,
 )
 
 
@@ -981,7 +980,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             self.refresh_status(L(
                 'portrait_manager_applied_selection',
                 'Applied selection to {manifest_file}.'
-            ).format(manifest_file=RUNTIME_HASH_DB_FILE))
+            ).format(manifest_file=RUNTIME_MANIFEST_FILE))
         except Exception as e:
             messagebox.showerror('GPMI', L(
                 'portrait_manager_error_apply_selection_failed',
@@ -989,15 +988,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             ).format(error=e))
 
     def _write_runtime(self, profile: Path) -> dict:
-        result = build_live_portrait_manifest(profile)
-        core_dir = Config.Importers.GPMI.Importer.importer_path / 'Runtime'
-        write_runtime_ini(
-            profile,
-            min_width=int(Config.Importers.GPMI.Importer.min_width),
-            min_height=int(Config.Importers.GPMI.Importer.min_height),
-            mirror_dirs=[core_dir],
-        )
-        return result
+        return build_live_portrait_manifest(profile)
 
     def refresh_status(self, message: str | None = None):
         profile = self.profile_dir
@@ -1026,7 +1017,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         lines.extend([
             L('portrait_manager_mods_folder_line', 'Mods folder: {folder_path}').format(folder_path=profile / USER_MODS_DIR),
             L('portrait_manager_source_images_line', 'Source images: {folder_path}').format(folder_path=profile / RUNTIME_MODS_DIR),
-            L('portrait_manager_live_manifest_line', 'Live manifest: {file_path}').format(file_path=profile / RUNTIME_HASH_DB_FILE),
+            L('portrait_manager_live_manifest_line', 'Live manifest: {file_path}').format(file_path=profile / RUNTIME_MANIFEST_FILE),
             L('portrait_manager_meta_line', 'Meta: {file_path}').format(file_path=profile / META_FILE),
         ])
         generated = runtime.get('generated') or {}

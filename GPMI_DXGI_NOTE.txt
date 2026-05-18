@@ -1,1 +1,0 @@
-GPMI v5 injects dxgi.dll instead of ReShade64.dll.

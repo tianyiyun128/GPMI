@@ -15,12 +15,11 @@ from core.packages.model_importers.model_importer import ModelImporterConfig, Mo
 from core.gpmi.mods import (
     GPMI_VERSION,
     META_FILE,
-    RUNTIME_HASH_DB_FILE,
+    RUNTIME_MANIFEST_FILE,
     build_live_portrait_manifest,
     ensure_game_profile,
     ensure_package_profile,
     game_profile_dir,
-    write_runtime_ini as write_game_runtime_ini,
 )
 
 log = logging.getLogger(__name__)
@@ -214,12 +213,12 @@ class GPMIPackage(ModelImporterPackage):
         game_path = self.validate_game_path(Config.Active.Importer.game_folder)
         game_exe_path = self.validate_game_exe_path(game_path)
         profile_dir = game_profile_dir(game_exe_path)
-        runtime_db = profile_dir / RUNTIME_HASH_DB_FILE
+        runtime_manifest = profile_dir / RUNTIME_MANIFEST_FILE
         meta_path = profile_dir / META_FILE
         ensure_game_profile(profile_dir)
 
-        needs_runtime_rebuild = not runtime_db.is_file()
-        if runtime_db.is_file() and meta_path.is_file() and meta_path.stat().st_mtime > runtime_db.stat().st_mtime:
+        needs_runtime_rebuild = not runtime_manifest.is_file()
+        if runtime_manifest.is_file() and meta_path.is_file() and meta_path.stat().st_mtime > runtime_manifest.stat().st_mtime:
             needs_runtime_rebuild = True
 
         if needs_runtime_rebuild:
@@ -227,13 +226,6 @@ class GPMIPackage(ModelImporterPackage):
                 build_live_portrait_manifest(profile_dir)
             except Exception:
                 log.exception('Failed to build initial GPMI live portrait manifest')
-
-        write_game_runtime_ini(
-            profile_dir,
-            min_width=int(Config.Active.Importer.min_width),
-            min_height=int(Config.Active.Importer.min_height),
-            mirror_dirs=[importer_path / 'Runtime'],
-        )
 
     def get_start_cmd(self, game_path: Path) -> Tuple[Path, List[str], Optional[str]]:
         game_exe_path = self.validate_game_exe_path(game_path)

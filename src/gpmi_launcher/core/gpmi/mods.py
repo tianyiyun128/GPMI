@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import re
@@ -11,18 +11,10 @@ REQUIRED_SLOTS = ("Unit", "Unit_H")
 SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tga"}
 GAME_PORTRAIT_NAME_PATTERN = re.compile(r"^(.+)_h_(.+)$")
 GPMI_VERSION = "0.5.0"
-DEFAULT_MIN_WIDTH = 200
-DEFAULT_MIN_HEIGHT = 200
 USER_MODS_DIR = "Mods"
 RUNTIME_MODS_DIR = USER_MODS_DIR
 META_FILE = "mod_meta.json"
 RUNTIME_MANIFEST_FILE = "live_portraits.json"
-
-# Compatibility names kept so the current UI/package shell can call the same
-# Python entry points while the runtime data flow moves away from GPU hashes.
-HASH_DB_FILE = "hash_db.json"
-SOURCE_HASH_DB_FILE = HASH_DB_FILE
-RUNTIME_HASH_DB_FILE = RUNTIME_MANIFEST_FILE
 
 
 def sanitize_identifier(value: str, fallback: str = "default") -> str:
@@ -55,39 +47,13 @@ def game_profile_dir(game_exe_path: Path) -> Path:
     return Path(game_exe_path).resolve().parent / "GPMI"
 
 
-def _clamped_min(value: object, fallback: int) -> int:
-    try:
-        parsed = int(value)
-    except Exception:
-        parsed = fallback
-    return max(parsed, fallback)
-
-
 def _portable_path(path: Path) -> str:
     return str(path.resolve()).replace("\\", "/")
 
 
-def write_package_ini(importer_path: Path) -> None:
-    common = (
-        "[core]\n"
-        "enabled=true\n"
-        "mode=godot_live_bridge\n"
-        f"min_width={DEFAULT_MIN_WIDTH}\n"
-        f"min_height={DEFAULT_MIN_HEIGHT}\n"
-        f"manifest={RUNTIME_MANIFEST_FILE}\n"
-        f"hash_db={RUNTIME_MANIFEST_FILE}\n"
-        "log_file=PortraitHashReplace.log\n"
-    )
-    (importer_path / "ptr_config.ini").write_text(common + "profile_dir=.\n", encoding="utf-8")
-    core_dir = importer_path / "Runtime"
-    core_dir.mkdir(parents=True, exist_ok=True)
-    (core_dir / "ptr_config.ini").write_text(common + "profile_dir=..\n", encoding="utf-8")
-
-
 def ensure_package_profile(importer_path: Path) -> None:
-    for rel in ["Runtime", "Runtime/Addons", "Tools"]:
+    for rel in ["Runtime", "Tools"]:
         (importer_path / rel).mkdir(parents=True, exist_ok=True)
-    write_package_ini(importer_path)
 
 
 def ensure_game_profile(profile_dir: Path) -> None:
@@ -97,7 +63,6 @@ def ensure_game_profile(profile_dir: Path) -> None:
         save_mod_meta(profile_dir, default_meta())
     if not (profile_dir / RUNTIME_MANIFEST_FILE).exists():
         save_runtime_manifest(profile_dir, default_runtime_manifest(profile_dir))
-    write_runtime_ini(profile_dir)
 
 
 def _game_portrait_files(slot_dir: Path) -> Dict[str, Path]:
@@ -108,7 +73,6 @@ def _game_portrait_files(slot_dir: Path) -> Dict[str, Path]:
         for path in slot_dir.iterdir()
         if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
     }
-
 
 def _replace_slot_image(slot_dir: Path, src: Path) -> None:
     slot_dir.mkdir(parents=True, exist_ok=True)
@@ -168,33 +132,6 @@ def import_game_portrait_mods(game_exe_path: Path, profile_dir: Path) -> dict:
         "missing_dirs": [],
         "target_mods_dir": str(target_mods_dir),
     }
-
-
-def write_runtime_ini(
-    profile_dir: Path,
-    min_width: int = DEFAULT_MIN_WIDTH,
-    min_height: int = DEFAULT_MIN_HEIGHT,
-    mirror_dirs: Optional[List[Path]] = None,
-) -> None:
-    profile_dir.mkdir(parents=True, exist_ok=True)
-    profile_abs = profile_dir.resolve()
-    min_width = _clamped_min(min_width, DEFAULT_MIN_WIDTH)
-    min_height = _clamped_min(min_height, DEFAULT_MIN_HEIGHT)
-    common = (
-        "[core]\n"
-        "enabled=true\n"
-        "mode=godot_live_bridge\n"
-        f"min_width={min_width}\n"
-        f"min_height={min_height}\n"
-        f"profile_dir={profile_abs}\n"
-        f"manifest={RUNTIME_MANIFEST_FILE}\n"
-        f"hash_db={RUNTIME_MANIFEST_FILE}\n"
-        "log_file=PortraitHashReplace.log\n"
-    )
-    (profile_dir / "ptr_config.ini").write_text(common, encoding="utf-8")
-    for mirror_dir in mirror_dirs or []:
-        mirror_dir.mkdir(parents=True, exist_ok=True)
-        (mirror_dir / "ptr_config.ini").write_text(common, encoding="utf-8")
 
 
 def default_meta() -> dict:
@@ -267,10 +204,6 @@ def load_runtime_manifest(profile_dir: Path) -> dict:
 def save_runtime_manifest(profile_dir: Path, data: dict) -> None:
     profile_dir.mkdir(parents=True, exist_ok=True)
     (profile_dir / RUNTIME_MANIFEST_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def save_runtime_hash_db(profile_dir: Path, data: dict) -> None:
-    save_runtime_manifest(profile_dir, data)
 
 
 def _relative(profile_dir: Path, path: Path) -> str:
@@ -560,10 +493,6 @@ def build_live_portrait_manifest(profile_dir: Path) -> dict:
     return generated
 
 
-def build_runtime_hash_db(profile_dir: Path) -> dict:
-    return build_live_portrait_manifest(profile_dir)
-
-
 def _summarize_manifest(path: Path) -> dict:
     if not path.is_file():
         return {"exists": False, "rules": 0, "enabled": 0, "characters": 0, "active_slots": 0}
@@ -615,7 +544,3 @@ def summarize_live_portrait_manifest(profile_dir: Path) -> dict:
         "revision": runtime.get("revision", 0),
         "generated": runtime.get("generated", {}),
     }
-
-
-def summarize_hash_db(profile_dir: Path) -> dict:
-    return summarize_live_portrait_manifest(profile_dir)

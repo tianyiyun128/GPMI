@@ -6,13 +6,11 @@ Backups/
 Resources/Security/*.key
 Resources/Security/*.der
 Resources/Packages/Updater/
-Resources/Packages/GPMI/Tools/kernel_source/build*/
 Resources/Packages/GPMI/Tools/unit_hook_source/build*/
 Resources/Packages/GPMI/Tools/texture_loader_source/build*
 build/
 dist/
 *.spec
-Resources/Packages/GPMI/Runtime/ptr_config.ini
 XXMI Launcher Log.txt
 XXMI Launcher Log.txt.bak
 XXMI Launcher Config.json
