@@ -337,11 +337,10 @@ def main() -> int:
     best = candidates[0]
     print("Recommended GPMIUnitHook.ini:")
     print("[GPMIUnitHook]")
-    print("probe_only=1")
     print(f"object_callp_rva=0x{best.begin:x}")
     print(f"object_callp_patch_size={best.patch_size}")
     print()
-    print("After probe logs real unit calls, set probe_only=0 or remove it.")
+    print("Copy these values into <game exe folder>/GPMI/GPMIUnitHook.ini.")
     return 0
 
 
