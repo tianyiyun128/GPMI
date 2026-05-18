@@ -47,11 +47,6 @@ class GPMIConfig(ModelImporterConfig):
     # Generic Godot target/runtime settings used by the GPMI portrait manager.
     custom_game_exe_name: str = ''
     unit_hook_dll_path: str = ''
-    # Legacy ReShade fields are retained for existing config files only. The
-    # launcher no longer resolves or loads these DLLs; the in-game Godot hook is
-    # responsible for consuming the live portrait manifest.
-    reshade_dll_path: str = ''
-    addon_dll_path: str = ''
     min_width: int = 32
     min_height: int = 32
     ptr_bgra_import: bool = False
