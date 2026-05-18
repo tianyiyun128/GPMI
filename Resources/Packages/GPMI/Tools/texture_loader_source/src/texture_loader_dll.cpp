@@ -2,13 +2,11 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -43,34 +41,18 @@ struct ModuleView
 {
     std::uint8_t *base = nullptr;
     std::uint32_t size = 0;
-    std::uint64_t image_base = 0;
     std::vector<Section> sections;
     std::vector<RuntimeFunction> functions;
 };
 
-struct LoaderConfig
+struct LoaderSymbols
 {
     std::uintptr_t image_load_from_file = 0;
     std::uintptr_t image_texture_create_from_image = 0;
-    std::uintptr_t variant_clear = 0;
-    bool verbose = false;
 };
 
-LoaderConfig g_config;
-bool g_config_loaded = false;
-
-std::string narrow(const std::filesystem::path &path)
-{
-    const auto text = path.u8string();
-    return std::string(reinterpret_cast<const char *>(text.data()), text.size());
-}
-
-std::filesystem::path module_dir()
-{
-    wchar_t path[MAX_PATH * 4]{};
-    GetModuleFileNameW(g_module, path, static_cast<DWORD>(std::size(path)));
-    return std::filesystem::path(path).parent_path();
-}
+LoaderSymbols g_symbols;
+bool g_symbols_resolved = false;
 
 std::filesystem::path game_dir()
 {
@@ -108,54 +90,6 @@ void log_line(const std::string &line)
     }
 }
 
-std::optional<std::uintptr_t> parse_number(const std::string &value)
-{
-    try
-    {
-        size_t idx = 0;
-        std::uintptr_t parsed = 0;
-        if (value.rfind("0x", 0) == 0 || value.rfind("0X", 0) == 0)
-            parsed = static_cast<std::uintptr_t>(std::stoull(value, &idx, 16));
-        else
-            parsed = static_cast<std::uintptr_t>(std::stoull(value, &idx, 10));
-        if (idx == value.size())
-            return parsed;
-    }
-    catch (...)
-    {
-    }
-    return std::nullopt;
-}
-
-std::unordered_map<std::string, std::string> read_ini(const std::filesystem::path &path)
-{
-    std::unordered_map<std::string, std::string> out;
-    std::ifstream file(path);
-    std::string line;
-    while (std::getline(file, line))
-    {
-        const auto comment = line.find_first_of(";#");
-        if (comment != std::string::npos)
-            line.resize(comment);
-        const auto eq = line.find('=');
-        if (eq == std::string::npos)
-            continue;
-        auto key = line.substr(0, eq);
-        auto value = line.substr(eq + 1);
-        auto trim = [](std::string &s) {
-            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
-                s.erase(s.begin());
-            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
-                s.pop_back();
-        };
-        trim(key);
-        trim(value);
-        if (!key.empty())
-            out[key] = value;
-    }
-    return out;
-}
-
 bool load_module_view(ModuleView &view)
 {
     auto *base = reinterpret_cast<std::uint8_t *>(GetModuleHandleW(nullptr));
@@ -170,7 +104,6 @@ bool load_module_view(ModuleView &view)
 
     view.base = base;
     view.size = nt->OptionalHeader.SizeOfImage;
-    view.image_base = nt->OptionalHeader.ImageBase;
 
     auto *sec = IMAGE_FIRST_SECTION(nt);
     for (unsigned i = 0; i < nt->FileHeader.NumberOfSections; ++i)
@@ -280,29 +213,11 @@ std::optional<std::uintptr_t> locate_function_by_string(const ModuleView &view, 
     return reinterpret_cast<std::uintptr_t>(view.base) + best->first;
 }
 
-void apply_config_value(const std::unordered_map<std::string, std::string> &ini,
-                        const char *abs_key,
-                        const char *rva_key,
-                        std::uintptr_t &target,
-                        std::uintptr_t module_base)
+void resolve_symbols_once()
 {
-    if (auto it = ini.find(abs_key); it != ini.end())
-    {
-        if (auto parsed = parse_number(it->second))
-            target = *parsed;
-    }
-    if (auto it = ini.find(rva_key); it != ini.end())
-    {
-        if (auto parsed = parse_number(it->second))
-            target = module_base + *parsed;
-    }
-}
-
-void load_config_once()
-{
-    if (g_config_loaded)
+    if (g_symbols_resolved)
         return;
-    g_config_loaded = true;
+    g_symbols_resolved = true;
 
     ModuleView view;
     if (!load_module_view(view))
@@ -312,39 +227,20 @@ void load_config_once()
     }
     const auto main_base = reinterpret_cast<std::uintptr_t>(view.base);
 
-    for (const auto &path : {profile_dir() / "GPMITextureLoader.ini", module_dir() / "GPMITextureLoader.ini"})
+    if (auto found = locate_function_by_string(view, {"Failed to load image. Error %d", "Loaded resource as image file"}))
     {
-        if (!std::filesystem::is_regular_file(path))
-            continue;
-        const auto ini = read_ini(path);
-        apply_config_value(ini, "image_load_from_file_abs", "image_load_from_file_rva", g_config.image_load_from_file, main_base);
-        apply_config_value(ini, "image_texture_create_from_image_abs", "image_texture_create_from_image_rva", g_config.image_texture_create_from_image, main_base);
-        apply_config_value(ini, "variant_clear_abs", "variant_clear_rva", g_config.variant_clear, main_base);
-        if (auto it = ini.find("verbose"); it != ini.end())
-            g_config.verbose = (it->second == "1" || it->second == "true" || it->second == "yes");
-        log_line("[GPMITextureLoader] loaded config: " + narrow(path));
+        g_symbols.image_load_from_file = *found;
+        std::ostringstream out;
+        out << "[GPMITextureLoader] auto-located Image::load_from_file rva=0x" << std::hex << (*found - main_base);
+        log_line(out.str());
     }
 
-    if (!g_config.image_load_from_file)
+    if (auto found = locate_function_by_string(view, {"Invalid image: null", "Invalid image: image is empty"}))
     {
-        if (auto found = locate_function_by_string(view, {"Failed to load image. Error %d", "Loaded resource as image file"}))
-        {
-            g_config.image_load_from_file = *found;
-            std::ostringstream out;
-            out << "[GPMITextureLoader] auto-located Image::load_from_file rva=0x" << std::hex << (*found - main_base);
-            log_line(out.str());
-        }
-    }
-
-    if (!g_config.image_texture_create_from_image)
-    {
-        if (auto found = locate_function_by_string(view, {"Invalid image: null", "Invalid image: image is empty"}))
-        {
-            g_config.image_texture_create_from_image = *found;
-            std::ostringstream out;
-            out << "[GPMITextureLoader] auto-located ImageTexture::create_from_image rva=0x" << std::hex << (*found - main_base);
-            log_line(out.str());
-        }
+        g_symbols.image_texture_create_from_image = *found;
+        std::ostringstream out;
+        out << "[GPMITextureLoader] auto-located ImageTexture::create_from_image rva=0x" << std::hex << (*found - main_base);
+        log_line(out.str());
     }
 }
 
@@ -398,21 +294,6 @@ bool call_sret_1(std::uintptr_t fn_addr, void *ret, const void *arg)
     }
 }
 
-void call_variant_clear(void *variant)
-{
-    if (!g_config.variant_clear || !variant)
-        return;
-    using Fn = void(__fastcall *)(void *);
-    const auto fn = reinterpret_cast<Fn>(g_config.variant_clear);
-    __try
-    {
-        fn(variant);
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-    }
-}
-
 void write_object_variant(void *variant, void *object)
 {
     if (!variant || !object)
@@ -427,15 +308,15 @@ void write_object_variant(void *variant, void *object)
 
 extern "C" __declspec(dllexport) bool __fastcall GPMI_LoadTextureVariant(void *out_variant, const wchar_t *replacement_path)
 {
-    load_config_once();
+    resolve_symbols_once();
     if (!out_variant || !replacement_path)
     {
         log_line("[GPMITextureLoader][ERROR] invalid arguments");
         return false;
     }
-    if (!g_config.image_load_from_file || !g_config.image_texture_create_from_image)
+    if (!g_symbols.image_load_from_file || !g_symbols.image_texture_create_from_image)
     {
-        log_line("[GPMITextureLoader][ERROR] missing Godot ABI addresses for Image::load_from_file or ImageTexture::create_from_image");
+        log_line("[GPMITextureLoader][ERROR] failed to auto-locate Godot Image::load_from_file or ImageTexture::create_from_image");
         return false;
     }
 
@@ -449,7 +330,7 @@ extern "C" __declspec(dllexport) bool __fastcall GPMI_LoadTextureVariant(void *o
     alignas(16) std::array<std::uint8_t, 32> image_ref{};
     alignas(16) std::array<std::uint8_t, 32> texture_ref{};
 
-    if (!call_sret_1(g_config.image_load_from_file, image_ref.data(), path.string_object))
+    if (!call_sret_1(g_symbols.image_load_from_file, image_ref.data(), path.string_object))
     {
         log_line("[GPMITextureLoader][ERROR] Image::load_from_file crashed");
         return false;
@@ -461,7 +342,7 @@ extern "C" __declspec(dllexport) bool __fastcall GPMI_LoadTextureVariant(void *o
         return false;
     }
 
-    if (!call_sret_1(g_config.image_texture_create_from_image, texture_ref.data(), image_ref.data()))
+    if (!call_sret_1(g_symbols.image_texture_create_from_image, texture_ref.data(), image_ref.data()))
     {
         log_line("[GPMITextureLoader][ERROR] ImageTexture::create_from_image crashed");
         return false;
@@ -473,11 +354,7 @@ extern "C" __declspec(dllexport) bool __fastcall GPMI_LoadTextureVariant(void *o
         return false;
     }
 
-    call_variant_clear(out_variant);
     write_object_variant(out_variant, texture_object);
-
-    if (g_config.verbose)
-        log_line("[GPMITextureLoader] replaced Variant with ImageTexture object");
     return true;
 }
 
