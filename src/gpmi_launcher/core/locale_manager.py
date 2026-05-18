@@ -3,11 +3,14 @@ import tomllib
 import random
 import locale
 import re
+import io
 
 from pathlib import Path
 from textwrap import dedent
 from typing import Optional, Union, List, Dict, BinaryIO
 from dataclasses import dataclass
+
+from core.embedded_resources import EmbeddedResources
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +35,7 @@ def fmt_bold(value):
         return [f'**{str(x)}**' for x in value]
     if not isinstance(value, str):
         value = str(value)
-    return f'**{value}**'
+    return f'**{value}'
 
 
 def list_formatter(value, conjunction):
@@ -123,17 +126,22 @@ class LocaleEngine:
         self.src_strings = {}
         self.locale_errors = []
 
-        # if locale_name == 'EN':
-        #     self.enable_locale = False
-        #     return
-
+        embedded_locale_path = f'Locale/Strings/{locale_name}'
         locale_path = self.locales_path / locale_name
 
         try:
-            for path in sorted(locale_path.iterdir()):
-                if not path.is_file() or not path.suffix == '.toml':
-                    continue
-                self.load_file_strings(path, tag)
+            if EmbeddedResources.is_dir(embedded_locale_path):
+                for resource_path in EmbeddedResources.iter_files(embedded_locale_path, suffixes=['.toml']):
+                    self.load_file_strings_from_bytes(
+                        resource_path,
+                        EmbeddedResources.read_bytes(resource_path),
+                        tag,
+                    )
+            else:
+                for path in sorted(locale_path.iterdir()):
+                    if not path.is_file() or not path.suffix == '.toml':
+                        continue
+                    self.load_file_strings(path, tag)
         except Exception as e:
             self.enable_locale = False
             raise Exception(f'Failed to load locale: {e}')
@@ -165,62 +173,67 @@ class LocaleEngine:
 
     def load_file_strings(self, path: Path, tag: str = 'loc'):
         with open(path, 'rb') as f:
-            data = tomllib.load(f)
-            for key, locale_strings in data.items():
-                loc_string = None
-                src_string = None
-                alt_strings = None
-                try:
-                    for loc_tag, loc_line in locale_strings.items():
-                        if loc_tag == 'src':
-                            src_string = loc_line
-                        elif loc_tag == 'loc':
-                            loc_string = loc_line
-                        elif loc_tag.startswith('alt'):
-                            if alt_strings is None:
-                                alt_strings = [loc_line]
-                            else:
-                                alt_strings.append(loc_line)
+            self.load_file_strings_from_data(path.name, tomllib.load(f), tag)
+
+    def load_file_strings_from_bytes(self, path_name: str, data: bytes, tag: str = 'loc'):
+        self.load_file_strings_from_data(Path(path_name).name, tomllib.load(io.BytesIO(data)), tag)
+
+    def load_file_strings_from_data(self, path_name: str, data: dict, tag: str = 'loc'):
+        for key, locale_strings in data.items():
+            loc_string = None
+            src_string = None
+            alt_strings = None
+            try:
+                for loc_tag, loc_line in locale_strings.items():
+                    if loc_tag == 'src':
+                        src_string = loc_line
+                    elif loc_tag == 'loc':
+                        loc_string = loc_line
+                    elif loc_tag.startswith('alt'):
+                        if alt_strings is None:
+                            alt_strings = [loc_line]
                         else:
-                            raise ValueError(f'unknown locale string tag `{loc_tag}`')
+                            alt_strings.append(loc_line)
+                    else:
+                        raise ValueError(f'unknown locale string tag `{loc_tag}`')
 
-                    # Consistency: force localized string to contain all placeholders from original
-                    if '{' in src_string:
-                        src_vars = self.extract_vars(src_string)
-                        loc_vars = self.extract_vars(loc_string)
-                        for var in src_vars:
-                            if var not in loc_vars:
-                                raise ValueError(f'localized string is missing `{{{var}}}` placeholder')
+                # Consistency: force localized string to contain all placeholders from original
+                if '{' in src_string:
+                    src_vars = self.extract_vars(src_string)
+                    loc_vars = self.extract_vars(loc_string)
+                    for var in src_vars:
+                        if var not in loc_vars:
+                            raise ValueError(f'localized string is missing `{{{var}}}` placeholder')
 
-                    # Safety: limit markdown link target [text](target) to placeholder
-                    for target in self.md_link_pattern.findall(loc_string):
-                        if not (target.startswith('{') and target.endswith('}')):
-                            raise ValueError(f'localized string link target `{target}` is not a placeholder')
+                # Safety: limit markdown link target [text](target) to placeholder
+                for target in self.md_link_pattern.findall(loc_string):
+                    if not (target.startswith('{') and target.endswith('}')):
+                        raise ValueError(f'localized string link target `{target}` is not a placeholder')
 
-                    # Safety: limit HTML href/src target to placeholder
-                    for target in self.html_link_pattern.findall(loc_string):
-                        if not (target.startswith('{') and target.endswith('}')):
-                            raise ValueError(f'localized string link target `{target}` is not a placeholder')
+                # Safety: limit HTML href/src target to placeholder
+                for target in self.html_link_pattern.findall(loc_string):
+                    if not (target.startswith('{') and target.endswith('}')):
+                        raise ValueError(f'localized string link target `{target}` is not a placeholder')
 
-                    if loc_string is None:
-                        raise ValueError(f'missing `loc` locale string')
+                if loc_string is None:
+                    raise ValueError(f'missing `loc` locale string')
 
-                    if src_string is None:
-                        raise ValueError(f'missing `src` locale string')
+                if src_string is None:
+                    raise ValueError(f'missing `src` locale string')
 
-                except Exception as e:
-                    log.error(f'Malformed locale string: {e} in file {path}')
-                    self.locale_errors.append(f'[{path.name}][{key}]: {str(e)}.')
-                    continue
+            except Exception as e:
+                log.error(f'Malformed locale string: {e} in file {path_name}')
+                self.locale_errors.append(f'[{path_name}][{key}]: {str(e)}.')
+                continue
 
-                if alt_strings is not None:
-                    loc_string = [loc_string] + alt_strings
+            if alt_strings is not None:
+                loc_string = [loc_string] + alt_strings
 
-                if tag == 'loc':
-                    self.strings[key] = loc_string
-                    self.src_strings[key] = src_string.strip()
-                else:
-                    self.strings[key] = src_string
+            if tag == 'loc':
+                self.strings[key] = loc_string
+                self.src_strings[key] = src_string.strip()
+            else:
+                self.strings[key] = src_string
 
 
 @dataclass
@@ -255,7 +268,14 @@ class LocaleIndex:
 
     @classmethod
     def from_toml_file(cls, f: BinaryIO) -> "LocaleIndex":
-        data = tomllib.load(f)
+        return cls.from_toml_data(tomllib.load(f))
+
+    @classmethod
+    def from_toml_bytes(cls, data: bytes) -> "LocaleIndex":
+        return cls.from_toml_data(tomllib.load(io.BytesIO(data)))
+
+    @classmethod
+    def from_toml_data(cls, data: dict) -> "LocaleIndex":
         locales = {}
         for name, info in data.items():
             locales[name] = LocaleData(
@@ -277,6 +297,7 @@ class LocaleIndex:
 class LocaleManager:
     def __init__(self):
         self.package_path: Optional[Path] = None
+        self.user_locale_path: Optional[Path] = None
         self.locale_engine: Optional[LocaleEngine] = None
         self.locale_index: Optional[LocaleIndex] = None
         self.active_locale: Optional[LocaleData] = None
@@ -314,25 +335,32 @@ class LocaleManager:
 
     def set_root_path(self, root_path: Path):
         self.package_path = root_path / 'Locale'
+        self.user_locale_path = root_path / 'GPMI Locale.cfg'
         self.locale_engine = LocaleEngine(self.package_path / 'Strings')
 
     def load_locale_index(self):
         config_path = self.package_path / 'locale_index.toml'
         try:
-            with open(config_path, 'rb') as f:
-                self.locale_index = LocaleIndex.from_toml_file(f)
+            if EmbeddedResources.is_file('Locale/locale_index.toml'):
+                self.locale_index = LocaleIndex.from_toml_bytes(EmbeddedResources.read_bytes('Locale/locale_index.toml'))
+            else:
+                with open(config_path, 'rb') as f:
+                    self.locale_index = LocaleIndex.from_toml_file(f)
         except Exception as e:
             log.error(f'Failed to load locale index from {config_path}: {str(e)}')
             self.locale_index = LocaleIndex.from_default()
 
     def read_active_locale(self) -> Optional[LocaleData]:
-        config_path = self.package_path / 'active_locale.cfg'
-        try:
-            with open(config_path, 'r') as f:
-                locale_name = f.read().strip()
-                return self.locale_index.get_locale(locale_name)
-        except Exception as e:
-            log.error(f'Failed to read active locale from {config_path}: {str(e)}')
+        paths = [self.user_locale_path]
+        if not EmbeddedResources.enabled():
+            paths.append(self.package_path / 'active_locale.cfg')
+        for config_path in paths:
+            try:
+                with open(config_path, 'r') as f:
+                    locale_name = f.read().strip()
+                    return self.locale_index.get_locale(locale_name)
+            except Exception as e:
+                log.error(f'Failed to read active locale from {config_path}: {str(e)}')
         return None
 
     def get_os_locale(self) -> Optional[LocaleData]:
@@ -369,7 +397,7 @@ class LocaleManager:
         # Remember loaded locale
         self.active_locale = locale_data
         if save_to_file:
-            with open(self.package_path / 'active_locale.cfg', 'w') as f:
+            with open(self.user_locale_path, 'w') as f:
                 f.write(locale_name)
 
 
