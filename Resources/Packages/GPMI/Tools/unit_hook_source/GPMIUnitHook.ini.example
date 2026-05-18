@@ -3,14 +3,13 @@
 # or:
 #   Resources\Packages\GPMI\Core\GPMI\GPMIUnitHook.ini
 #
-# The hook installs at Godot's Object::callp. If the built-in pattern does not
-# resolve on the target Godot 4.3 executable, set one of these:
+# Required: Godot Object::callp RVA for the target executable.
+# Use Tools\unit_hook_source\tools\find_godot_callp.py after every game exe update.
 #
 # object_callp_rva=0x123456
-# object_callp_abs=0x7ff612345678
 #
-# Keep this enabled while validating a new RVA. Probe mode installs the hook
-# and logs observed unit() calls, but does not replace return values.
+# Keep this enabled only while validating a new RVA. Probe mode installs the
+# hook and logs observed unit() calls, but does not replace return values.
 #
 # probe_only=1
 #
@@ -20,15 +19,8 @@
 # verbose_calls=1
 #
 # The native hook captures ImageLoader.unit(type, action, high_resolution), calls
-# the original function, then replaces the returned Variant. Creating the Godot
-# texture is intentionally isolated behind a tiny game-version-specific thunk:
-#
-# bool __fastcall texture_loader(void *out_variant, const wchar_t *replacement_path)
-#
-# Set its RVA or absolute address here after the thunk is linked/found:
-#
-# texture_loader_rva=0x123456
-# texture_loader_abs=0x7ff612345678
+# the original function, then replaces the returned Variant through the separate
+# GPMITextureLoader.dll placed next to GPMIUnitHook.dll.
 #
 # Default inline patch size is 12 bytes for the known Godot 4.3 MSVC callp
 # prologue. Increase only if a verified locator/prologue check requires a larger
