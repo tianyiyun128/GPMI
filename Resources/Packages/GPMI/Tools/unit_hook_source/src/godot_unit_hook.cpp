@@ -3,7 +3,6 @@
 #include "godot_abi.hpp"
 #include "log.hpp"
 #include "manifest.hpp"
-#include "win_memory.hpp"
 
 #include <atomic>
 #include <array>
@@ -23,7 +22,6 @@ using ObjectCallpFn = void(__fastcall *)(void *return_variant,
 
 Hook g_hook;
 ObjectCallpFn g_original = nullptr;
-bool g_probe_only = false;
 bool g_verbose_calls = false;
 std::atomic<std::uint64_t> g_call_count = 0;
 std::atomic<std::uint64_t> g_decoded_method_count = 0;
@@ -131,8 +129,6 @@ void __fastcall object_callp_detour(void *return_variant,
 
     ++g_unit_decoded_count;
     log().info("unit call observed: " + unit_call->logical_path);
-    if (g_probe_only)
-        return;
 
     auto rule = manifest().match(unit_call->logical_path);
     if (!rule)
@@ -156,8 +152,7 @@ void __fastcall object_callp_detour(void *return_variant,
     else
     {
         log().warn("unit return not replaced by native loader: " + unit_call->logical_path +
-                   "; manifest matched and file exists. If the GodotHook bridge is installed, "
-                   "the original ImageLoader return may already be supplied from in-memory cache.");
+                   "; manifest matched and file exists");
     }
 }
 }
@@ -174,24 +169,12 @@ bool install_unit_hook(const std::filesystem::path &profile_dir,
 
     GodotAbiConfig abi = load_abi_config(profile_dir, dll_dir);
     set_texture_loader(abi.texture_loader);
-    g_probe_only = abi.probe_only;
     g_verbose_calls = abi.verbose_calls;
 
     void *target = reinterpret_cast<void *>(abi.object_callp);
     if (!target)
     {
-        auto range = main_module_range();
-        if (!range)
-        {
-            log().error("failed to read main module range");
-            return false;
-        }
-        target = scan_pattern(*range, abi.object_callp_pattern);
-    }
-
-    if (!target)
-    {
-        log().error("Object::callp target not found. Add object_callp_rva or object_callp_abs to GPMIUnitHook.ini.");
+        log().error("Object::callp target not configured. Add object_callp_rva to GPMIUnitHook.ini.");
         return false;
     }
 
@@ -206,13 +189,10 @@ bool install_unit_hook(const std::filesystem::path &profile_dir,
 
     g_original = reinterpret_cast<ObjectCallpFn>(g_hook.trampoline);
     log().info("Object::callp hook installed at " + std::to_string(reinterpret_cast<std::uintptr_t>(target)));
-    if (abi.probe_only)
-        log().info("probe_only enabled; unit calls will be logged without return replacement");
     if (abi.verbose_calls)
         log().info("verbose_calls enabled; Object::callp method names will be sampled");
     if (!abi.texture_loader)
-        log().warn("native texture_loader_rva/abs is not configured; native return rewriting is disabled. "
-                   "Install the no-MOD GodotHook bridge or provide a verified native texture loader thunk.");
+        log().warn("GPMITextureLoader.dll is not available; native return rewriting is disabled");
     return true;
 }
 
