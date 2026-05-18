@@ -88,13 +88,7 @@ and fill in the required RVA values.
 
 ### Locating `Object::callp`
 
-Some stripped Godot game executables do not expose useful symbols, and the DLL's default pattern scan may fail with:
-
-```text
-Object::callp target not found. Add object_callp_rva or object_callp_abs to GPMIUnitHook.ini.
-```
-
-Use the offline locator tool to find a candidate `Object::callp` RVA:
+Use the offline locator tool to find a candidate `Object::callp` RVA for the target executable:
 
 ```bat
 python Resources\Packages\GPMI\Tools\unit_hook_source\tools\find_godot_callp.py "C:\path\to\Game.exe"
@@ -106,7 +100,6 @@ The final block of the output is the recommended INI snippet, for example:
 
 ```ini
 [GPMIUnitHook]
-probe_only=1
 object_callp_rva=0x2f3c0b0
 object_callp_patch_size=12
 ```
@@ -117,7 +110,13 @@ Copy those values into:
 <game exe folder>/GPMI/GPMIUnitHook.ini
 ```
 
-Run the game once with `probe_only=1`. In probe mode, the hook should only confirm that the target is correct and log observed `unit()` calls. After the log shows real calls such as:
+Then start the game and inspect:
+
+```text
+<game exe folder>/GPMI/GPMIUnitHook.log
+```
+
+A valid hook should log entries such as:
 
 ```text
 Object::callp hook installed
@@ -125,9 +124,7 @@ unit call observed: Unit/jean_default
 unit call observed: Unit_H/jean_default
 ```
 
-remove `probe_only=1` or set it to `0`, then restart the game.
-
-If the locator prints multiple candidates, test the highest-scoring candidate first. Keep `probe_only=1` until the log proves that the selected RVA captures real `ImageLoader.unit(...)` calls. Do not enable return replacement against an unverified RVA.
+If the locator prints multiple candidates, test the highest-scoring candidate first. Do not continue with return replacement against an unverified RVA.
 
 For the current HilichurlsAmbition 1.2.3.3 test executable, the locator currently reports:
 
