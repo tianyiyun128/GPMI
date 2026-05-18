@@ -990,7 +990,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
 
     def _write_runtime(self, profile: Path) -> dict:
         result = build_live_portrait_manifest(profile)
-        core_dir = Config.Importers.GPMI.Importer.importer_path / 'Core/GPMI'
+        core_dir = Config.Importers.GPMI.Importer.importer_path / 'Runtime'
         write_runtime_ini(
             profile,
             min_width=int(Config.Importers.GPMI.Importer.min_width),

@@ -83,15 +83,15 @@ if not defined BUILD_OK (
 call :FindOutput "%BUILD_DIR%"
 if errorlevel 1 exit /b 1
 
-if not exist "..\..\Core\GPMI" mkdir "..\..\Core\GPMI"
-call :CopyWithRetry "%OUTPUT_DLL%" "..\..\Core\GPMI\GPMIUnitHook.dll"
+if not exist "..\..\Runtime" mkdir "..\..\Runtime"
+call :CopyWithRetry "%OUTPUT_DLL%" "..\..\Runtime\GPMIUnitHook.dll"
 if errorlevel 1 exit /b 1
 
 echo [GPMI] Done.
 echo [GPMI] Output:
 echo [GPMI]   %OUTPUT_DLL%
 echo [GPMI] Copied to:
-echo [GPMI]   %CD%\..\..\Core\GPMI\GPMIUnitHook.dll
+echo [GPMI]   %CD%\..\..\Runtime\GPMIUnitHook.dll
 exit /b 0
 
 :ConfigureAndBuild

@@ -63,7 +63,7 @@ Resources\Packages\GPMI\Tools\unit_hook_source\build.cmd
 The build writes:
 
 ```text
-Resources/Packages/GPMI/Core/GPMI/GPMIUnitHook.dll
+Resources/Packages/GPMI/Runtime/GPMIUnitHook.dll
 ```
 
 The launcher injects this DLL when starting the selected game. The DLL writes runtime logs to:

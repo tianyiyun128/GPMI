@@ -12,7 +12,7 @@ Resources/Packages/GPMI/Tools/texture_loader_source/build*
 build/
 dist/
 *.spec
-Resources/Packages/GPMI/Core/GPMI/ptr_config.ini
+Resources/Packages/GPMI/Runtime/ptr_config.ini
 XXMI Launcher Log.txt
 XXMI Launcher Log.txt.bak
 XXMI Launcher Config.json

@@ -122,7 +122,7 @@ class GPMIPackage(ModelImporterPackage):
 
     def validate_package_files(self):
         ensure_package_profile(Config.Active.Importer.importer_path)
-        Paths.verify_path(Config.Active.Importer.importer_path / 'Core/GPMI')
+        Paths.verify_path(Config.Active.Importer.importer_path / 'Runtime')
 
     def create_shortcut(self):
         # Generic Godot targets do not have a stable executable name, so GPMI avoids
@@ -199,7 +199,7 @@ class GPMIPackage(ModelImporterPackage):
             if not path.is_absolute():
                 path = Paths.App.Root / path
         else:
-            path = Config.Active.Importer.importer_path / 'Core/GPMI/GPMIUnitHook.dll'
+            path = Config.Active.Importer.importer_path / 'Runtime/GPMIUnitHook.dll'
         if not path.is_file():
             raise ValueError(
                 f'GPMIUnitHook.dll not found: {path}\n\n'
@@ -232,7 +232,7 @@ class GPMIPackage(ModelImporterPackage):
             profile_dir,
             min_width=int(Config.Active.Importer.min_width),
             min_height=int(Config.Active.Importer.min_height),
-            mirror_dirs=[importer_path / 'Core/GPMI'],
+            mirror_dirs=[importer_path / 'Runtime'],
         )
 
     def get_start_cmd(self, game_path: Path) -> Tuple[Path, List[str], Optional[str]]:

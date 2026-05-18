@@ -1,7 +1,7 @@
 # Copy this file to either:
 #   <game exe folder>\GPMI\GPMIUnitHook.ini
 # or:
-#   Resources\Packages\GPMI\Core\GPMI\GPMIUnitHook.ini
+#   Resources\Packages\GPMI\Runtime\GPMIUnitHook.ini
 #
 # Required: Godot Object::callp RVA for the target executable.
 # Use Tools\unit_hook_source\tools\find_godot_callp.py after every game exe update.

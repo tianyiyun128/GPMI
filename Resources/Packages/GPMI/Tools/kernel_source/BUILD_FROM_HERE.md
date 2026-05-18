@@ -52,7 +52,7 @@ Successful output:
 
 ```text
 Resources\Packages\GPMI\Tools\kernel_source\build\Release\PortraitHashReplace.addon64
-Resources\Packages\GPMI\Core\GPMI\PortraitHashReplace.addon64
+Resources\Packages\GPMI\Runtime\PortraitHashReplace.addon64
 ```
 
 The script configures CMake, builds Release x64, and copies the `.addon64` into the GPMI Core folder.

@@ -79,13 +79,13 @@ def write_package_ini(importer_path: Path) -> None:
         "log_file=PortraitHashReplace.log\n"
     )
     (importer_path / "ptr_config.ini").write_text(common + "profile_dir=.\n", encoding="utf-8")
-    core_dir = importer_path / "Core/GPMI"
+    core_dir = importer_path / "Runtime"
     core_dir.mkdir(parents=True, exist_ok=True)
-    (core_dir / "ptr_config.ini").write_text(common + "profile_dir=../..\n", encoding="utf-8")
+    (core_dir / "ptr_config.ini").write_text(common + "profile_dir=..\n", encoding="utf-8")
 
 
 def ensure_package_profile(importer_path: Path) -> None:
-    for rel in ["Core/GPMI", "Core/GPMI/Addons", "Tools"]:
+    for rel in ["Runtime", "Runtime/Addons", "Tools"]:
         (importer_path / rel).mkdir(parents=True, exist_ok=True)
     write_package_ini(importer_path)
 

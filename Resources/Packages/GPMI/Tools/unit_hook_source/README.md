@@ -11,7 +11,7 @@ Resources\Packages\GPMI\Tools\unit_hook_source\build.cmd
 The build copies the DLL to:
 
 ```text
-Resources\Packages\GPMI\Core\GPMI\GPMIUnitHook.dll
+Resources\Packages\GPMI\Runtime\GPMIUnitHook.dll
 ```
 
 Runtime behavior:

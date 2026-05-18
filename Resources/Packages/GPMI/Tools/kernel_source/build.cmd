@@ -95,19 +95,19 @@ if not defined BUILD_OK (
 call :FindOutput "%BUILD_DIR%"
 if errorlevel 1 exit /b 1
 
-if not exist "..\..\Core\GPMI" mkdir "..\..\Core\GPMI"
-call :CopyWithRetry "%OUTPUT_ADDON%" "..\..\Core\GPMI\PortraitHashReplace.addon64"
+if not exist "..\..\Runtime" mkdir "..\..\Runtime"
+call :CopyWithRetry "%OUTPUT_ADDON%" "..\..\Runtime\PortraitHashReplace.addon64"
 if errorlevel 1 exit /b 1
-if not exist "..\..\Core\GPMI\Addons" mkdir "..\..\Core\GPMI\Addons"
-call :CopyWithRetry "%OUTPUT_ADDON%" "..\..\Core\GPMI\Addons\PortraitHashReplace.addon64"
+if not exist "..\..\Runtime\Addons" mkdir "..\..\Runtime\Addons"
+call :CopyWithRetry "%OUTPUT_ADDON%" "..\..\Runtime\Addons\PortraitHashReplace.addon64"
 if errorlevel 1 exit /b 1
 
 echo [GPMI] Done.
 echo [GPMI] Output:
 echo [GPMI]   %OUTPUT_ADDON%
 echo [GPMI] Copied to:
-echo [GPMI]   %CD%\..\..\Core\GPMI\PortraitHashReplace.addon64
-echo [GPMI]   %CD%\..\..\Core\GPMI\Addons\PortraitHashReplace.addon64
+echo [GPMI]   %CD%\..\..\Runtime\PortraitHashReplace.addon64
+echo [GPMI]   %CD%\..\..\Runtime\Addons\PortraitHashReplace.addon64
 exit /b 0
 
 :ConfigureAndBuild
