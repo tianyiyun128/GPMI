@@ -33,10 +33,31 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if exist "tools\build_resources_bundle.py" (
-    echo [GPMI] Generating embedded resource bundle...
-    python tools\build_resources_bundle.py
-    if errorlevel 1 exit /b 1
+if not exist "tools\build_resources_bundle.py" (
+    echo [GPMI][ERROR] Missing tools\build_resources_bundle.py.
+    echo [GPMI][ERROR] Pull latest embed-runtime-resources branch first.
+    exit /b 1
+)
+
+echo [GPMI] Generating embedded resource bundle...
+python tools\build_resources_bundle.py
+if errorlevel 1 exit /b 1
+
+if not exist "src\gpmi_launcher\core\resources_bundle.py" (
+    echo [GPMI][ERROR] Embedded resource bundle was not generated.
+    exit /b 1
+)
+
+findstr /C:"'Locale/" "src\gpmi_launcher\core\resources_bundle.py" >nul 2>nul
+if errorlevel 1 (
+    echo [GPMI][ERROR] Embedded resource bundle does not contain Locale resources.
+    exit /b 1
+)
+
+findstr /C:"'Themes/" "src\gpmi_launcher\core\resources_bundle.py" >nul 2>nul
+if errorlevel 1 (
+    echo [GPMI][ERROR] Embedded resource bundle does not contain Theme resources.
+    exit /b 1
 )
 
 echo [GPMI] Running Nuitka...
@@ -49,6 +70,7 @@ python -m nuitka ^
   --output-filename="GPMI Launcher.exe" ^
   --include-package=customtkinter ^
   --include-package-data=customtkinter ^
+  --include-module=core.resources_bundle ^
   src\gpmi_launcher\app.py
 
 if errorlevel 1 exit /b 1
@@ -56,6 +78,8 @@ if errorlevel 1 exit /b 1
 echo [GPMI] Done.
 echo [GPMI] Nuitka output is under:
 echo [GPMI]   %CD%\build
+echo [GPMI]
+echo [GPMI] Do not copy Locale or Themes into the release directory if you want embedded-only resources.
 exit /b 0
 
 :SetupMSVC
