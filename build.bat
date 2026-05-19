@@ -61,12 +61,12 @@ if exist "src\gpmi_launcher\core\resources_bundle.py" (
 )
 
 echo [GPMI] Cleaning previous Nuitka output...
-call :CleanDir "build\app.build"
-if errorlevel 1 exit /b 1
-call :CleanDir "build\app.dist"
-if errorlevel 1 exit /b 1
-call :CleanDir "build\app.onefile-build"
-if errorlevel 1 exit /b 1
+@REM call :CleanDir "build\app.build"
+@REM if errorlevel 1 exit /b 1
+@REM call :CleanDir "build\app.dist"
+@REM if errorlevel 1 exit /b 1
+@REM call :CleanDir "build\app.onefile-build"
+@REM if errorlevel 1 exit /b 1
 
 echo [GPMI] Running Nuitka...
 python -m nuitka ^
