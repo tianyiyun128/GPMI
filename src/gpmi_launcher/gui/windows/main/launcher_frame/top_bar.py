@@ -86,7 +86,7 @@ class GitHubButton(WebResourceButton):
         super().__init__(
             x=930,
             button_image_path='button-resource-github.png',
-            command=lambda: webbrowser.open('https://github.com/tianyiyun128-blip/GPMI'),
+            command=lambda: webbrowser.open('https://github.com/tianyiyun128/GPMI'),
             master=master)
         self.set_tooltip(L('top_bar_github_button_tooltip', 'Project GitHub'), delay=0.01)
 

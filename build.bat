@@ -9,6 +9,8 @@ echo [GPMI]   %CD%
 set "GPMI_VERSION=0.0.0.0"
 set "RESOURCE_BUNDLE_ARG="
 
+if not "%~1"=="" set "GPMI_VERSION=%~1"
+
 where cl.exe >nul 2>nul
 if errorlevel 1 (
     call :SetupMSVC
@@ -36,6 +38,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo [GPMI] Generating embedded resource bundle...
+python scripts\build_resources_bundle.py
+if errorlevel 1 exit /b 1
+
 if exist "src\gpmi_launcher\core\resources_bundle.py" (
     echo [GPMI] Found embedded resource bundle. It will be included.
     set "RESOURCE_BUNDLE_ARG=--include-module=core.resources_bundle"
@@ -52,7 +58,7 @@ python -m nuitka ^
   --enable-plugin=tk-inter ^
   --windows-console-mode=disable ^
   --output-dir=build ^
-  --output-filename="GPMI Launcher.exe" ^
+  --output-filename="GPMI.exe" ^
   --product-name="GPMI Launcher" ^
   --file-description="GPMI Launcher" ^
   --company-name="GPMI" ^

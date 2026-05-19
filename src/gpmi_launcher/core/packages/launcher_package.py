@@ -61,12 +61,12 @@ class LauncherPackage(Package):
         super().__init__(PackageMetadata(
             package_name='Launcher',
             auto_load=True,
-            github_repo_owner='SpectrumQT',
-            github_repo_name='XXMI-Launcher',
-            asset_version_pattern=r'.*(\d\.\d\.\d).*',
-            asset_name_format='XXMI-Launcher-Installer-Online-v%s.msi',
-            signature_pattern=r'^## Signature[\r\n]+- ((?:[A-Za-z0-9+\/]{4})*(?:[A-Za-z0-9+\/]{4}|[A-Za-z0-9+\/]{3}=|[A-Za-z0-9+\/]{2}={2})$)',
-            signature_public_key='MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEYac352uRGKZh6LOwK0fVDW/TpyECEfnRtUp+bP2PJPP63SWOkJ3a/d9pAnPfYezRVJ1hWjZtpRTT8HEAN/b4mWpJvqO43SAEV/1Q6vz9Rk/VvRV3jZ6B/tmqVnIeHKEb',
+            github_repo_owner='tianyiyun128',
+            github_repo_name='GPMI',
+            asset_version_pattern=r'v?(\d+\.\d+\.\d+).*',
+            asset_name_format='GPMI*.msi',
+            signature_pattern='',
+            signature_public_key='',
             exit_after_update=True,
         ))
         self.subscribe(Events.LauncherManager.CreateShortcut, lambda event: self.create_shortcut())
@@ -83,31 +83,30 @@ class LauncherPackage(Package):
         return self.get_installed_version()
 
     def update_available(self):
-        # GPMI-only build: launcher self-update is disabled.
-        return False
+        return super().update_available()
 
 
     def detect_latest_version(self):
-        # GPMI-only build: do not query GitHub for launcher updates.
-        self.cfg.latest_version = self.get_installed_version()
-        return self.cfg.latest_version
+        return super().detect_latest_version()
 
     def download_latest_version(self):
-        # GPMI-only build: no online launcher downloads.
-        return None
+        return super().download_latest_version()
 
     def install_latest_version(self, clean):
         Events.Fire(Events.PackageManager.InitializeInstallation())
+
+        if self.downloaded_asset_path is None or not self.downloaded_asset_path.is_file():
+            raise FileNotFoundError('Downloaded GPMI installer was not found.')
 
         cmd = f'msiexec /i "{self.downloaded_asset_path}" /qr /norestart APPDIR="{Paths.App.Root}" CREATE_SHORTCUTS=""'
         log.debug(f'Calling `{cmd}`...')
         subprocess.Popen(cmd, shell=True)
 
-        installer_process_name = 'EnhancedUI.exe'
+        installer_process_name = 'msiexec.exe'
 
         Events.Fire(Events.Application.StatusUpdate(status=L('status_waiting_installer', 'Waiting for installer to start...')))
 
-        result, pid = wait_for_process(installer_process_name, with_window=True, timeout=15)
+        result, pid = wait_for_process(installer_process_name, with_window=False, timeout=15)
         if result == WaitResult.Timeout:
             raise ValueError(L('error_launcher_installer_start_failed', """
                 Failed to start {asset_name}!
@@ -136,26 +135,7 @@ class LauncherPackage(Package):
         return 'MSI'
 
     def update(self, clean=False):
-        # Launcher releases come in 2 formats:
-        # * .msi (installer) - updated via Windows Installer
-        # * .zip (portable) - updated via custom exe (https://github.com/SpectrumQT/XXMI-Updater)
-        if Config.Launcher.update_channel.upper() in ['MSI', 'ZIP']:
-            # Use update channel override provided by user
-            update_channel = Config.Launcher.update_channel.upper()
-        else:
-            # Autodetect installation format based (check for .msi registry record)
-            update_channel = self.detect_update_channel()
-        log.debug(f'Using {update_channel} update channel')
-
-        if update_channel == 'MSI':
-            # Use default package update method (targeted at .msi) and let Windows Installer do the heavy lifting
-            super().update()
-        else:
-            # Use installer (updater) package (targeted at .zip)
-            # If we're not relying on Windows Installer for self-update, we'll have to do the heavy lifting ourselves
-            from core.packages.updater_package import UpdaterPackage
-            self.manager.register_package(UpdaterPackage())
-            Events.Fire(Events.UpdaterManager.UpdateLauncher())
+        super().update(clean=clean)
 
     def upgrade_installation(self):
         # Grab old version info from config

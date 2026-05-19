@@ -1,3 +1,4 @@
+import fnmatch
 import requests
 
 from typing import List, Optional
@@ -100,13 +101,16 @@ class GitHubClient:
                 raise ValueError(L('error_github_parse_signature_failed', 'Failed to parse signature!'))
             signature = result[0]
 
-        release_notes = self.parse_release_notes(response.body)
+        release_notes = self.parse_release_notes(response.body, require_signature=signature_pattern is not None)
 
         asset_download_url, manifest_download_url = None, None
 
+        asset_name = asset_name_format % version if '%' in asset_name_format else asset_name_format
+
         for asset in response.assets:
-            if asset.name == asset_name_format % version:
+            if ('*' in asset_name and fnmatch.fnmatchcase(asset.name, asset_name)) or asset.name == asset_name:
                 asset_download_url = asset.browser_download_url
+                asset_name = asset.name
             elif asset.name == 'Manifest.json':
                 manifest_download_url = asset.browser_download_url
 
@@ -146,7 +150,7 @@ class GitHubClient:
 
         return data
 
-    def parse_release_notes(self, body) -> str:
+    def parse_release_notes(self, body, require_signature=True) -> str:
         # Skip warning section header to exclude it from search
         body = body.replace('## Warning', '')
         # Search for start of section
@@ -155,6 +159,8 @@ class GitHubClient:
             return L('error_github_invalid_release_notes', '<font color="red">⚠ Error! Invalid release notes format! ⚠</font>')
         # Search for start of signature section (footer)
         end = body.find('## Signature')
+        if end == -1 and not require_signature:
+            return body[start:]
         if end == -1:
             return L('error_github_unsigned_release', '<font color="red">☢ Error! Release is unsigned! ☢</font>')
         # Return text inbetween

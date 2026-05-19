@@ -5,12 +5,14 @@ __pycache__/
 Backups/
 Resources/Security/*.key
 Resources/Security/*.der
+Resources/Bin/
 Resources/Packages/Updater/
 Resources/Packages/GPMI/Tools/unit_hook_source/build*/
 Resources/Packages/GPMI/Tools/texture_loader_source/build*
 build/
 dist/
 *.spec
+src/gpmi_launcher/core/resources_bundle.py
 XXMI Launcher Log.txt
 XXMI Launcher Log.txt.bak
 XXMI Launcher Config.json

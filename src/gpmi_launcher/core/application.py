@@ -276,17 +276,11 @@ class Application:
         # Load packages of active importer and skip update for fast start
         self.load_importer(active_importer, update=False)
 
-        # GPMI-only build: disable XXMI online package update workflow.
-        # The original launcher queries GitHub on startup and may try to download Launcher/XXMI packages.
-        # GPMI manages its runtime files locally, so ignore --update here.
-        self.args.update = False
-        Config.Launcher.auto_update = False
-
         Events.Subscribe(Events.Application.OpenSettings, self.handle_open_settings)
 
         # Quick launch mode.
-        # GPMI-only build: do not check/download XXMI online updates before launch.
         if self.args.nogui:
+            self.auto_update()
             self.launch()
             self.exit()
             return
@@ -300,10 +294,17 @@ class Application:
 
         Events.Fire(Events.Application.LoadImporter(importer_id=Config.Launcher.active_importer))
 
-        # GPMI-only build: update/check buttons are intentionally disabled to prevent
-        # the original XXMI Launcher from contacting/downloading from GitHub.
         Events.Subscribe(Events.Application.Update,
-                         lambda event: Events.Fire(Events.Application.Ready()))
+                         lambda event: self.run_as_thread(
+                             self.package_manager.update_packages,
+                             no_install=event.no_install,
+                             no_check=event.no_check,
+                             force=event.force,
+                             reinstall=event.reinstall,
+                             packages=event.packages,
+                             silent=event.silent,
+                             no_thread=event.no_thread,
+                         ))
         Events.Subscribe(Events.Application.CheckForUpdates,
                          lambda event: self.run_as_thread(self.check_for_updates))
         Events.Subscribe(Events.Application.LoadImporter,
@@ -317,7 +318,7 @@ class Application:
 
         Events.Fire(Events.PackageManager.NotifyPackageVersions(detect_installed=True))
 
-        # GPMI-only build: do not schedule original XXMI auto-update task.
+        self.auto_update()
         Events.Fire(Events.Application.Ready())
 
         if open_settings:
@@ -572,7 +573,8 @@ class Application:
         self.package_manager.notify_package_versions()
         Config.ConfigSecurity.validate_config()
         Events.Fire(Events.Application.ConfigUpdate())
-        # GPMI-only build: skip original XXMI online update check.
+        if update:
+            self.auto_update()
 
     def update_scheduled(self) -> bool:
         if not self.package_manager.update_available():

@@ -9,6 +9,7 @@ import json
 from dataclasses import dataclass, field, asdict
 from typing import Union, List, Dict, Optional, Tuple
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 from dacite import from_dict
 from win32api import GetFileVersionInfo, HIWORD, LOWORD
 
@@ -70,9 +71,9 @@ class Package:
         self.metadata = metadata
         self.cfg: Union[PackageConfig, None] = None
         self.asset_version_pattern = re.compile(self.metadata.asset_version_pattern)
-        self.signature_pattern = re.compile(self.metadata.signature_pattern, re.MULTILINE)
+        self.signature_pattern = re.compile(self.metadata.signature_pattern, re.MULTILINE) if self.metadata.signature_pattern else None
 
-        self.security = Security(public_key=self.metadata.signature_public_key)
+        self.security = Security(public_key=self.metadata.signature_public_key) if self.metadata.signature_public_key else Security()
 
         self.manager: Optional[PackageManager] = None
         self.active = False
@@ -128,10 +129,16 @@ class Package:
     def update_available(self):
         return self.cfg.latest_version != '' and self.cfg.latest_version != self.get_installed_version()
 
+    def get_asset_file_name(self):
+        asset_file_name = self.metadata.asset_name_format % self.cfg.latest_version if '%' in self.metadata.asset_name_format else self.metadata.asset_name_format
+        if '*' in asset_file_name and self.download_url:
+            return unquote(Path(urlparse(self.download_url).path).name)
+        return asset_file_name
+
     def download_latest_version_data(self):
         Events.Fire(Events.PackageManager.InitializeDownload())
 
-        asset_file_name = self.metadata.asset_name_format % self.cfg.latest_version
+        asset_file_name = self.get_asset_file_name()
 
         data = self.manager.github_client.download_data(
             self.download_url,
@@ -155,7 +162,7 @@ class Package:
     def notify_download_progress(self, downloaded_bytes, total_bytes):
         if not self.download_in_progress:
             Events.Fire(Events.PackageManager.StartDownload(
-                asset_name=self.metadata.asset_name_format % self.cfg.latest_version
+                asset_name=self.get_asset_file_name()
             ))
             self.download_in_progress = True
 
@@ -168,7 +175,7 @@ class Package:
 
         Events.Fire(Events.PackageManager.StartIntegrityVerification(asset_name='downloaded data'))
 
-        if not self.security.verify(self.signature, data):
+        if self.signature is not None and not self.security.verify(self.signature, data):
             raise ValueError(L('error_downloaded_data_verification_failed', """
                 Downloaded data integrity verification failed!
                 Please restart the launcher and try again!
@@ -181,7 +188,7 @@ class Package:
         Events.Fire(Events.PackageManager.StartIntegrityVerification(asset_name=asset_path.name))
 
         asset_bytes = Paths.App.read_bytes(asset_path)
-        if not self.security.verify(self.signature, asset_bytes):
+        if self.signature is not None and not self.security.verify(self.signature, asset_bytes):
             raise ValueError(L('package_manager_file_verification_failed', """
                 {asset_name} data integrity verification failed!
                 Please restart the launcher and try again!
