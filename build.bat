@@ -8,6 +8,7 @@ echo [GPMI]   %CD%
 
 set "GPMI_VERSION=0.0.0.0"
 set "RESOURCE_BUNDLE_ARG="
+set "TKHTML_EXTRAS_PATH="
 
 if not "%~1"=="" set "GPMI_VERSION=%~1"
 
@@ -42,6 +43,14 @@ echo [GPMI] Generating embedded resource bundle...
 python scripts\build_resources_bundle.py
 if errorlevel 1 exit /b 1
 
+for /f "usebackq tokens=*" %%i in (`python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('tkinterweb_tkhtml_extras'); print(pathlib.Path(spec.origin).parent if spec else '')"`) do set "TKHTML_EXTRAS_PATH=%%i"
+if not exist "%TKHTML_EXTRAS_PATH%\tkhtml" (
+    echo [GPMI][ERROR] tkinterweb_tkhtml_extras tkhtml runtime was not found.
+    echo [GPMI][ERROR] Install dependencies first:
+    echo [GPMI][ERROR]   python -m pip install -r requirements.txt
+    exit /b 1
+)
+
 if exist "src\gpmi_launcher\core\resources_bundle.py" (
     echo [GPMI] Found embedded resource bundle. It will be included.
     set "RESOURCE_BUNDLE_ARG=--include-module=core.resources_bundle"
@@ -66,6 +75,10 @@ python -m nuitka ^
   --product-version=%GPMI_VERSION% ^
   --include-package=customtkinter ^
   --include-package-data=customtkinter ^
+  --include-package=tkinterweb ^
+  --include-package=tkinterweb_tkhtml ^
+  --include-package=tkinterweb_tkhtml_extras ^
+  --include-data-dir="%TKHTML_EXTRAS_PATH%\tkhtml=tkinterweb_tkhtml_extras\tkhtml" ^
   %RESOURCE_BUNDLE_ARG% ^
   src\gpmi_launcher\app.py
 
