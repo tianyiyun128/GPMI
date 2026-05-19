@@ -2,7 +2,7 @@ import os
 import logging
 import json
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from dataclasses import dataclass, field, fields
 from typing import Union, Dict, Any, Optional, List
 
@@ -12,6 +12,7 @@ import core.path_manager as Paths
 import core.event_manager as Events
 
 from core.locale_manager import L
+from core.embedded_resources import EmbeddedResourcePath, EmbeddedResources
 from core.utils.security import Security
 from core import package_manager
 from core.packages import launcher_package
@@ -49,10 +50,6 @@ class AppConfig:
 
     def __post_init__(self):
         self.active_theme = 'Default'
-
-    @property
-    def theme_path(self) -> Path:
-        return Paths.App.Themes / Config.active_theme
 
     @property
     def config_path(self):
@@ -301,25 +298,29 @@ Active: gpmi_package.GPMIPackageConfig
 
 
 def get_resource_path(element, filename: Union[str, Path], extensions: Optional[Union[str, List[str]]] = None):
-    filename = Path(filename)
+    filename = PurePosixPath(str(filename).replace('\\', '/'))
     search_extensions = [filename.suffix]
     if extensions is not None:
         search_extensions += [ext for ext in list(extensions) if ext != filename.suffix]
-    class_path = element.get_resource_path() / filename
-    for extension in search_extensions:
-        resource_path = Config.theme_path / class_path.with_suffix(extension)
-        if resource_path.is_file():
-            return resource_path
-    resource_path = Paths.App.Themes / 'Default' / class_path
-    if not resource_path.is_file():
-        raise FileNotFoundError(L('error_theme_resource_not_found', """
-            Resource not found:
-            
-            {resource_path}
-            
-            Hint: You can also use other extensions: {extensions}
-        """).format(
-            resource_path=resource_path,
-            extensions = ", ".join(extensions or []))
-        )
-    return resource_path
+    class_path = PurePosixPath(str(element.get_resource_path()).replace('\\', '/')) / filename
+    theme_names = [Config.active_theme]
+    if Config.active_theme != 'Default':
+        theme_names.append('Default')
+
+    for theme_name in theme_names:
+        for extension in search_extensions:
+            resource_path = PurePosixPath('Themes') / theme_name / class_path.with_suffix(extension)
+            if EmbeddedResources.is_file(resource_path):
+                return EmbeddedResourcePath(resource_path)
+
+    fallback_resource_path = PurePosixPath('Themes') / 'Default' / class_path
+    raise FileNotFoundError(L('error_theme_resource_not_found', """
+        Embedded resource not found:
+        
+        {resource_path}
+        
+        Hint: You can also use other extensions: {extensions}
+    """).format(
+        resource_path=fallback_resource_path,
+        extensions=", ".join(extensions or []))
+    )

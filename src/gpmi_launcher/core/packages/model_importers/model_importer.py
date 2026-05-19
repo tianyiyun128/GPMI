@@ -743,16 +743,7 @@ class ModelImporterPackage(Package):
             ).format(importer=Config.Launcher.active_importer))
             link.working_directory = str(Paths.App.Resources / 'Bin')
             link.arguments = f'--nogui --xxmi {Config.Launcher.active_importer}'
-
-            ico_file_name = f'{Config.Launcher.active_importer}.ico'
-            ico_file_paths = [
-                Config.Config.theme_path / 'Shortcuts' / ico_file_name,
-                Paths.App.Themes / 'Default' / 'Shortcuts' / ico_file_name,
-            ]
-            for ico_path in ico_file_paths:
-                if ico_path.is_file():
-                    link.icon_location = (str(ico_path), 0)
-                    break
+            link.icon_location = (str(Path(sys.executable)), 0)
 
         Config.Active.Importer.shortcut_deployed = True
 

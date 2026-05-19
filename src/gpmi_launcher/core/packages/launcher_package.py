@@ -162,13 +162,13 @@ class LauncherPackage(Package):
             link.path = str(Path(sys.executable))
             link.description = L('launcher_shortcut_description', 'Shortcut to GPMI')
             link.working_directory = str(Paths.App.Resources / 'Bin')
-            link.icon_location = (str(Paths.App.Themes / 'Default' / 'window-icon.ico'), 0)
+            link.icon_location = (str(Path(sys.executable)), 0)
 
         with winshell.shortcut(str(Paths.App.Root / f'GPMI.lnk')) as link:
             link.path = str(Path(sys.executable))
             link.description = L('launcher_shortcut_description', 'Shortcut to GPMI')
             link.working_directory = str(Paths.App.Resources / 'Bin')
-            link.icon_location = (str(Paths.App.Themes / 'Default' / 'window-icon.ico'), 0)
+            link.icon_location = (str(Path(sys.executable)), 0)
 
     def uninstall(self):
         log.debug(f'Uninstalling package {self.metadata.package_name}...')

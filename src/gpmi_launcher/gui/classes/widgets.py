@@ -16,11 +16,19 @@ from customtkinter import ThemeManager, CTkFont
 from PIL import Image, ImageTk, ImageDraw
 
 import core.config_manager as Config
+from core.embedded_resources import EmbeddedResourcePath
 
 from gui.classes.element import UIElementBase
 from gui.classes.windows import UIWindow
 
 logging.getLogger('PIL').setLevel(logging.INFO)
+
+
+def open_resource_image(resource_path):
+    if isinstance(resource_path, EmbeddedResourcePath):
+        with resource_path.open('rb') as stream:
+            return Image.open(stream).copy()
+    return Image.open(str(resource_path))
 
 
 class UIWidget(UIElementBase):
@@ -275,7 +283,7 @@ class UIImage(UICanvasWidget, CTkBaseClass):
                 #     if self._video_rendering_active:
                 #         self._video_rendering_active = False
 
-                self._image = Image.open(str(path))
+                self._image = open_resource_image(path)
 
         if self._update_attrs(['width', 'height', 'opacity', 'brightness'], kwargs):
             self.image = self.create_image(self._image, self._width, self._height, self.opacity, self.brightness)
@@ -762,7 +770,10 @@ class UILabel(UIWidget, CTkLabel):
         self.image: Optional[CTkImage] = None
         if image_path is not None:
             self._supported_extensions = ['.webp', '.jpeg', '.png', '.jpg']
-            self.image = CTkImage(Image.open(str(Config.get_resource_path(self, image_path, self._supported_extensions))))
+            path = Path(image_path)
+            if not path.is_absolute():
+                path = Config.get_resource_path(self, image_path, self._supported_extensions)
+            self.image = CTkImage(open_resource_image(path))
         CTkLabel.__init__(self, master, image=self.image, **kwargs)
 
         if text_color_disabled is None:
@@ -839,7 +850,10 @@ class UIButton(UIWidget, CTkButton):
         self.image: Optional[CTkImage] = None
         if image_path is not None:
             self._supported_extensions = ['.webp', '.jpeg', '.png', '.jpg']
-            self.image = CTkImage(Image.open(str(Config.get_resource_path(self, image_path, self._supported_extensions))))
+            path = Path(image_path)
+            if not path.is_absolute():
+                path = Config.get_resource_path(self, image_path, self._supported_extensions)
+            self.image = CTkImage(open_resource_image(path))
 
         self.is_hovered = False
         self.is_selected = False

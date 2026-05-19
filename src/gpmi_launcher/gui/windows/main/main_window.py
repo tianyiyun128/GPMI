@@ -1,22 +1,18 @@
 import ctypes
-import json
 import logging
-import shutil
 import sys
 
 from copy import deepcopy
-from pathlib import Path
 
 import pyglet
 
-import core.path_manager as Paths
 import core.event_manager as Events
 import core.config_manager as Config
 
 from core.embedded_resources import EmbeddedResources
 from core.locale_manager import L
 
-from customtkinter import set_appearance_mode, set_default_color_theme
+from customtkinter import set_appearance_mode
 from customtkinter.windows.widgets.theme import ThemeManager
 
 from gui.classes.windows import UIMainWindow, limit_scaling
@@ -146,174 +142,79 @@ class MainWindow(UIMainWindow):
     def get_embedded_theme_resource(theme: str) -> str:
         return f'Themes/{theme}/custom-tkinter-theme.json'
 
-    @staticmethod
-    def get_external_theme_json_path(theme: str) -> Path:
-        return Paths.App.Themes / theme / 'custom-tkinter-theme.json'
-
-    def read_theme_data(self, theme: str) -> tuple[dict | None, Path | None]:
+    def read_theme_data(self, theme: str) -> dict | None:
         embedded_resource = self.get_embedded_theme_resource(theme)
         if EmbeddedResources.is_file(embedded_resource):
-            return EmbeddedResources.read_json(embedded_resource), None
+            return EmbeddedResources.read_json(embedded_resource)
 
-        theme_json_path = self.get_external_theme_json_path(theme)
-        if theme_json_path.is_file():
-            return json.loads(Paths.App.read_text(theme_json_path)), theme_json_path
-
-        return None, theme_json_path
+        return None
 
     def load_theme(self, theme: str):
         # Skip loading the same theme
         if self.active_theme == theme:
             return
 
-        theme_data, theme_json_path = self.read_theme_data(theme)
+        theme_data = self.read_theme_data(theme)
 
         # Ensure customtkinter theme integrity
-        if not self.validate_theme(theme, theme_data, theme_json_path):
+        if not self.validate_theme(theme, theme_data):
             return
 
         # Load customtkinter theme
         try:
-            if theme_data is not None and theme_json_path is None:
-                load_customtkinter_theme_from_data(theme, theme_data)
-                load_embedded_theme_fonts(theme)
-            else:
-                set_default_color_theme(str(theme_json_path))
+            load_customtkinter_theme_from_data(theme, theme_data)
+            load_embedded_theme_fonts(theme)
         except Exception as e:
             log.exception(e)
-
-        # Load custom fonts from external development/user theme folders
-        if theme_json_path is not None:
-            theme_path = theme_json_path.parent
-            fonts_path = theme_path / 'Fonts'
-            if fonts_path.is_dir():
-                for font_path in fonts_path.iterdir():
-                    if font_path.suffix.lower() not in ('.ttf', '.otf'):
-                        continue
-                    try:
-                        pyglet.font.add_file(str(font_path))
-                    except Exception as e:
-                        log.exception(e)
-
-            # Set icon path only for real filesystem themes. Embedded .ico resources are not written to disk.
-            icon_path = theme_path / 'window-icon.ico'
-            if icon_path.is_file():
-                self.cfg.icon_path = icon_path
 
         # Set theme as active
         self.active_theme = theme
         Config.Config.active_theme = theme
 
-    def validate_theme(self, theme: str, theme_data: dict | None, theme_json_path: Path | None):
+    def validate_theme(self, theme: str, theme_data: dict | None):
         theme_name = theme
 
         # Make sure that theme exists
         if theme_data is None:
-            if theme_json_path is None or not theme_json_path.parent.is_dir():
-                Config.Config.active_theme = 'Default'
-                Config.Launcher.gui_theme = 'Default'
+            Config.Config.active_theme = 'Default'
+            Config.Launcher.gui_theme = 'Default'
+            if theme_name != 'Default':
                 self.load_theme('Default')
-                Events.Fire(Events.Application.ShowWarning(
-                    message=L('message_text_theme_load_failed_no_folder', """
-                        Failed to load {theme} theme:
-                        
-                        Theme folder does not exist!
-                    """).format(theme=theme_name)
-                ))
-                return False
-
-            if not theme_json_path.is_file():
-                Config.Config.active_theme = 'Default'
-                Config.Launcher.gui_theme = 'Default'
-                self.load_theme('Default')
-                Events.Fire(Events.Application.ShowWarning(
-                    message=L('message_text_theme_load_failed_no_file', """
-                        Failed to load {theme} theme:
-                        
-                        Theme file `custom-tkinter-theme.json` does not exist!
-                    """).format(theme=theme_name)
-                ))
-                return False
+            Events.Fire(Events.Application.ShowWarning(
+                message=L('message_text_theme_load_failed_no_file', """
+                    Failed to load {theme} theme:
+                    
+                    Embedded theme resource `custom-tkinter-theme.json` does not exist!
+                """).format(theme=theme_name)
+            ))
+            return False
 
         try:
-            if theme_data is None:
-                theme_data = json.loads(Paths.App.read_text(theme_json_path))
             theme_api_version = theme_data['Metadata']['theme_api_version']
         except Exception:
             theme_api_version = '0.0.0'
 
         if theme_api_version <  '1.0.1':
-            default_data, default_json_path = self.read_theme_data('Default')
-
-            if default_data is not None and default_json_path is None:
+            default_data = self.read_theme_data('Default')
+            if default_data is not None:
                 load_customtkinter_theme_from_data('Default', default_data)
-            elif default_json_path is not None:
-                set_default_color_theme(str(default_json_path))
 
-            # Embedded themes cannot be patched on disk. Fall back to Default instead.
-            if theme_json_path is None:
-                Config.Config.active_theme = 'Default'
-                Config.Launcher.gui_theme = 'Default'
-                self.load_theme('Default')
-                Events.Fire(Events.Application.ShowWarning(
-                    message=L('message_text_theme_load_failed_no_file', """
-                        Failed to load {theme} theme:
-                        
-                        Theme file `custom-tkinter-theme.json` does not exist!
-                    """).format(theme=theme_name)
-                ))
-                return False
-
-            update_dialogue = Events.Application.ShowWarning(
-                modal=True,
-                title=L('message_title_theme_update_required', 'Theme Update Required'),
-                confirm_text=L('message_button_theme_use_default', 'Use Default'),
-                cancel_text=L('message_button_patch_theme', 'Patch Theme'),
+            Config.Config.active_theme = 'Default'
+            Config.Launcher.gui_theme = 'Default'
+            self.load_theme('Default')
+            Events.Fire(Events.Application.ShowWarning(
                 message=L('message_text_theme_update_required', """
                     Selected {theme} theme cannot be loaded!
                     
-                    Click `Use Default` to use default theme instead (ensures proper visuals).
-                    Click `Patch Theme` to replace `custom-tkinter-theme.json` with new one.
+                    The embedded theme API version is too old. Default theme is used instead.
                 """).format(theme=theme_name)
-            )
-            user_requested_default_theme = self.show_messagebox(update_dialogue)
-            if user_requested_default_theme:
-                Config.Config.active_theme = 'Default'
-                Config.Launcher.gui_theme = 'Default'
-                self.load_theme('Default')
-            else:
-                default_external_json_path = self.get_external_theme_json_path('Default')
-                Events.Fire(Events.PathManager.VerifyFileAccess(path=theme_json_path, write=True))
-                theme_json_path.unlink()
-                shutil.copy2(default_external_json_path, theme_json_path)
-                self.load_theme(theme_name)
+            ))
+            return False
 
         return True
 
     def reload_theme(self, last_mod_time=0):
-        if not Config.Config.Launcher.theme_dev_mode:
-            return
-
-        if self.active_theme is None:
-            return
-
-        # Embedded packaged themes are immutable and have no filesystem mtime to watch.
-        if EmbeddedResources.is_file(self.get_embedded_theme_resource(self.active_theme)):
-            return
-
-        theme_path = Paths.App.Themes / self.active_theme
-        mod_time = theme_path.stat().st_mtime
-
-        # self._verify_chain()
-
-        if mod_time != last_mod_time:
-            try:
-                set_default_color_theme(str(theme_path / 'custom-tkinter-theme.json'))
-            except Exception as e:
-                log.exception(e)
-            self._apply_theme(recursive=True)
-
-        self.after(100, self.reload_theme, mod_time)
+        return
 
     def _verify_chain(self):
         self._verify_chain_recursive(self)

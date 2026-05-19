@@ -6,9 +6,9 @@ from urllib.parse import urlparse
 
 import core.event_manager as Events
 import core.config_manager as Config
-import core.path_manager as Paths
 import gui.vars as Vars
 
+from core.embedded_resources import EmbeddedResources
 from core.locale_manager import L
 
 from gui.classes.containers import UIFrame, UIScrollableFrame
@@ -284,18 +284,18 @@ class LauncherThemeOptionMenu(UIOptionMenu):
             master=master)
         self.set_tooltip(L('launcher_settings_theme_option_menu_tooltip', """
             Select launcher GUI theme.
-            Warning! `Default` theme will be overwritten by launcher updates!
-            To make a custom theme:
-            1. Create a duplicate of `Default` folder in `Themes` folder.
-            2. Rename the duplicate in a way you want it to be shown in Settings.
-            3. Edit or replace any images (valid extensions: webp, jpeg, png, jpg).
+            Themes are embedded in the application package.
         """))
 
     def update_values(self):
-        values = ['Default']
-        for path in Paths.App.Themes.iterdir():
-            if path.is_dir() and path.name != 'Default':
-                values.append(path.name)
+        values = []
+        for resource_path in EmbeddedResources.children('Themes'):
+            theme_name = resource_path.rsplit('/', 1)[-1]
+            if EmbeddedResources.is_file(f'{resource_path}/custom-tkinter-theme.json'):
+                values.append(theme_name)
+        if 'Default' not in values:
+            values.insert(0, 'Default')
+        values = ['Default'] + sorted(value for value in values if value != 'Default')
         self.configure(values=values)
 
     def _open_dropdown_menu(self):
