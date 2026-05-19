@@ -6,6 +6,8 @@ cd /d "%~dp0"
 echo [GPMI] Building launcher from:
 echo [GPMI]   %CD%
 
+set "GPMI_VERSION=0.0.0.0"
+
 where cl.exe >nul 2>nul
 if errorlevel 1 (
     call :SetupMSVC
@@ -68,6 +70,11 @@ python -m nuitka ^
   --windows-console-mode=disable ^
   --output-dir=build ^
   --output-filename="GPMI Launcher.exe" ^
+  --product-name="GPMI Launcher" ^
+  --file-description="GPMI Launcher" ^
+  --company-name="GPMI" ^
+  --file-version=%GPMI_VERSION% ^
+  --product-version=%GPMI_VERSION% ^
   --include-package=customtkinter ^
   --include-package-data=customtkinter ^
   --include-module=core.resources_bundle ^
