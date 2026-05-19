@@ -35,8 +35,8 @@ class PackageMetadata:
     github_repo_name: str = ''
     asset_version_pattern: str = ''
     asset_name_format: str = ''
-    signature_pattern: str = ''
-    signature_public_key: str = ''
+    signature_pattern: Optional[str] = None
+    signature_public_key: Optional[str] = None
     exit_after_update: bool = False
     deploy_name: str = ''
 

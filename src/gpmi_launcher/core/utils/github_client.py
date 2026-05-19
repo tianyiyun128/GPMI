@@ -93,7 +93,7 @@ class GitHubClient:
             raise ValueError(L('error_github_parse_version_failed', 'Failed to parse latest release version!'))
         version = result[0]
 
-        if signature_pattern is None:
+        if not signature_pattern:
             signature = None
         else:
             result = signature_pattern.findall(response.body)
@@ -101,7 +101,7 @@ class GitHubClient:
                 raise ValueError(L('error_github_parse_signature_failed', 'Failed to parse signature!'))
             signature = result[0]
 
-        release_notes = self.parse_release_notes(response.body, require_signature=signature_pattern is not None)
+        release_notes = self.parse_release_notes(response.body, require_signature=bool(signature_pattern))
 
         asset_download_url, manifest_download_url = None, None
 

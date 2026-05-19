@@ -65,8 +65,8 @@ class LauncherPackage(Package):
             github_repo_name='GPMI',
             asset_version_pattern=r'v?(\d+\.\d+\.\d+).*',
             asset_name_format='GPMI*.msi',
-            signature_pattern='',
-            signature_public_key='',
+            signature_pattern=None,
+            signature_public_key=None,
             exit_after_update=True,
         ))
         self.subscribe(Events.LauncherManager.CreateShortcut, lambda event: self.create_shortcut())
