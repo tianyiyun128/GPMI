@@ -60,6 +60,11 @@ if exist "src\gpmi_launcher\core\resources_bundle.py" (
     echo [GPMI][WARN] Build will continue without embedded Locale/Themes bundle.
 )
 
+echo [GPMI] Cleaning previous Nuitka output...
+if exist "build\app.build" rmdir /s /q "build\app.build"
+if exist "build\app.dist" rmdir /s /q "build\app.dist"
+if exist "build\app.onefile-build" rmdir /s /q "build\app.onefile-build"
+
 echo [GPMI] Running Nuitka...
 python -m nuitka ^
   --mode=standalone ^
