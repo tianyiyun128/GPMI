@@ -6,6 +6,9 @@ cd /d "%~dp0"
 set "VERSION=%~1"
 if "%VERSION%"=="" set "VERSION=0.0.0"
 if /I "%VERSION:~0,1%"=="v" set "VERSION=%VERSION:~1%"
+set "SKIP_BUILD="
+if /I "%~2"=="--skip-build" set "SKIP_BUILD=1"
+if /I "%~2"=="skip-build" set "SKIP_BUILD=1"
 set "VERSION4=%VERSION%"
 for /f "tokens=1-4 delims=." %%a in ("%VERSION%") do (
     if "%%a"=="" goto :BadVersion
@@ -37,14 +40,29 @@ if errorlevel 1 (
     exit /b 1
 )
 
+wix extension list 2>nul | findstr /I /C:"WixToolset.UI.wixext" >nul
+if errorlevel 1 (
+    echo [GPMI][ERROR] WiX UI extension was not found.
+    echo [GPMI][ERROR] Install it first:
+    echo [GPMI][ERROR]   wix extension add WixToolset.UI.wixext
+    echo [GPMI][ERROR]
+    echo [GPMI][ERROR] After installing it, reuse the existing Nuitka build with:
+    echo [GPMI][ERROR]   package-gpmi-msi.cmd %VERSION% --skip-build
+    exit /b 1
+)
+
 if not exist "%RUNTIME_SRC%\GPMIUnitHook.dll" (
     echo [GPMI][ERROR] Missing runtime DLL:
     echo [GPMI][ERROR]   "%RUNTIME_SRC%\GPMIUnitHook.dll"
     exit /b 1
 )
 
-call build.bat "%VERSION4%"
-if errorlevel 1 exit /b 1
+if defined SKIP_BUILD (
+    echo [GPMI] Skipping Nuitka build and reusing existing build output.
+) else (
+    call build.bat "%VERSION4%"
+    if errorlevel 1 exit /b 1
+)
 
 if exist "%STAGE_DIR%" rmdir /s /q "%STAGE_DIR%"
 mkdir "%BIN_DIR%"
