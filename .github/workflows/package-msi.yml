@@ -12,6 +12,12 @@ on:
         required: true
         type: boolean
         default: false
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
 
 jobs:
   package-msi:
@@ -22,9 +28,24 @@ jobs:
       - name: Check WiX EULA acceptance
         shell: pwsh
         run: |
-          if ("${{ inputs.accept_wix_osmf_eula }}" -ne "true") {
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.accept_wix_osmf_eula }}" -ne "true") {
             Write-Error "WiX v7 requires explicit OSMF EULA acceptance. Re-run this workflow with accept_wix_osmf_eula checked."
           }
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}"
+          }
+          if ($version.StartsWith("v")) {
+            $version = $version.Substring(1)
+          }
+          "GPMI_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GPMI_MSI=GPMI-$version.msi" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Resolved version: $version"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,11 +76,18 @@ jobs:
 
       - name: Build MSI
         shell: cmd
-        run: package-gpmi-msi.cmd ${{ inputs.version }}
+        run: package-gpmi-msi.cmd %GPMI_VERSION%
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GPMI-${{ inputs.version }}-msi
-          path: dist/GPMI-${{ inputs.version }}.msi
+          name: GPMI-${{ env.GPMI_VERSION }}-msi
+          path: dist/${{ env.GPMI_MSI }}
           if-no-files-found: error
+
+      - name: Upload MSI to GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ env.GPMI_MSI }}
+          fail_on_unmatched_files: true

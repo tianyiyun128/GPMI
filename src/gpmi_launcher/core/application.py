@@ -365,6 +365,52 @@ class Application:
         except Exception:
             logging.debug('GPMI exe path saved before Vars were available.', exc_info=True)
 
+    def ensure_startup_language_configured(self):
+        try:
+            user_locale_path = Locale.Locale.user_locale_path
+            if user_locale_path is not None and user_locale_path.is_file():
+                return
+
+            locales = Locale.Locale.get_indexed_locales()
+            if len(locales) <= 1:
+                return
+
+            active_locale_name = Locale.Locale.active_locale.name if Locale.Locale.active_locale is not None else ''
+            locales = sorted(locales, key=lambda item: item.name != active_locale_name)
+            locale_options = [f'{locale.display_name} ({locale.name})' for locale in locales]
+
+            response = self.gui.show_messagebox(Events.Application.ShowDialogue(
+                modal=True,
+                title='Language / 语言',
+                message=(
+                    'Select the launcher language before continuing.\n\n'
+                    '继续之前请选择启动器语言。\n\n'
+                    '{radio_widget}'
+                ),
+                confirm_text='Continue / 继续',
+                cancel_text='Use detected / 使用检测语言',
+                radio_options=locale_options,
+            ))
+
+            selected_locale = None
+            if isinstance(response, tuple):
+                accepted, selected_index = response
+                if accepted is True and 0 <= selected_index < len(locales):
+                    selected_locale = locales[selected_index]
+                elif accepted is False:
+                    selected_locale = locales[0]
+
+            if selected_locale is None:
+                return
+
+            Locale.Locale.set_active_locale(selected_locale.name)
+            Config.Launcher.locale = selected_locale.name
+            Config.Config.save()
+            Events.Fire(Events.Application.ConfigUpdate())
+
+        except Exception as e:
+            logging.exception(e)
+
     def ensure_gpmi_executable_configured(self):
         if Config.Launcher.active_importer != 'GPMI':
             return
@@ -373,15 +419,17 @@ class Application:
         if exe_path is not None and exe_path.is_file():
             return
 
+        self.ensure_startup_language_configured()
+
         self.gui.show_messagebox(Events.Application.ShowInfo(
             modal=True,
-            title='GPMI Setup',
-            message=(
-                'GPMI needs the exact Godot game executable before it can start.\n\n'
-                'Please select the game .exe itself, not the game folder. '
-                'The selected .exe path will be saved as the GPMI target.'
-            ),
-            confirm_text='Select .exe',
+            title=L('message_title_gpmi_setup', 'GPMI Setup'),
+            message=L('message_text_gpmi_select_exe_required', """
+                GPMI needs the exact Godot game executable before it can start.
+                
+                Please select the game .exe itself, not the game folder. The selected .exe path will be saved as the GPMI target.
+            """),
+            confirm_text=L('message_button_select_exe', 'Select .exe'),
         ))
 
         try:
@@ -390,7 +438,7 @@ class Application:
             selected = filedialog.askopenfilename(
                 parent=self.gui,
                 initialdir=str(initial),
-                title='Select Godot Game Executable',
+                title=str(L('filedialog_title_select_gpmi_exe', 'Select Godot Game Executable')),
                 filetypes=[('Applications', '*.exe'), ('All files', '*.*')],
             )
         except Exception as e:
@@ -406,8 +454,8 @@ class Application:
         if selected_path.suffix.lower() != '.exe' or not selected_path.is_file():
             self.gui.show_messagebox(Events.Application.ShowError(
                 modal=True,
-                title='Invalid GPMI Target',
-                message='Please select a valid .exe file. Folder paths are not accepted by GPMI.'
+                title=L('message_title_invalid_gpmi_target', 'Invalid GPMI Target'),
+                message=L('message_text_invalid_gpmi_target', 'Please select a valid .exe file. Folder paths are not accepted by GPMI.')
             ))
             Events.Fire(Events.Application.OpenSettings(tab_name='GENERAL_TAB'))
             return
