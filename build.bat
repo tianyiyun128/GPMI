@@ -61,9 +61,12 @@ if exist "src\gpmi_launcher\core\resources_bundle.py" (
 )
 
 echo [GPMI] Cleaning previous Nuitka output...
-if exist "build\app.build" rmdir /s /q "build\app.build"
-if exist "build\app.dist" rmdir /s /q "build\app.dist"
-if exist "build\app.onefile-build" rmdir /s /q "build\app.onefile-build"
+call :CleanDir "build\app.build"
+if errorlevel 1 exit /b 1
+call :CleanDir "build\app.dist"
+if errorlevel 1 exit /b 1
+call :CleanDir "build\app.onefile-build"
+if errorlevel 1 exit /b 1
 
 echo [GPMI] Running Nuitka...
 python -m nuitka ^
@@ -93,6 +96,17 @@ echo [GPMI] Done.
 echo [GPMI] Nuitka output is under:
 echo [GPMI]   %CD%\build
 exit /b 0
+
+:CleanDir
+set "CLEAN_TARGET=%~1"
+if not exist "%CLEAN_TARGET%" exit /b 0
+rmdir /s /q "%CLEAN_TARGET%" >nul 2>nul
+if not exist "%CLEAN_TARGET%" exit /b 0
+echo [GPMI][ERROR] Failed to remove "%CLEAN_TARGET%".
+echo [GPMI][ERROR] Close any running GPMI.exe from the build folder, close Explorer windows opened inside build\app.dist, then run packaging again.
+echo [GPMI][ERROR] To force-close the old build manually:
+echo [GPMI][ERROR]   taskkill /IM GPMI.exe /F
+exit /b 1
 
 :SetupMSVC
 echo [GPMI] MSVC environment not detected. Trying to locate vcvars64.bat...
