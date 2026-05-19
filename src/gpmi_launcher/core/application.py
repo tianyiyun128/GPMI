@@ -365,18 +365,6 @@ class Application:
         except Exception:
             logging.debug('GPMI exe path saved before Vars were available.', exc_info=True)
 
-    @staticmethod
-    def _is_active_locale(locale_name: str) -> bool:
-        try:
-            return Locale.Locale.active_locale.name.upper() == locale_name.upper()
-        except Exception:
-            return False
-
-    def _startup_text(self, en: str, cn: str) -> str:
-        if self._is_active_locale('CN'):
-            return cn
-        return en
-
     def ensure_startup_language_configured(self):
         try:
             user_locale_path = Locale.Locale.user_locale_path
@@ -435,16 +423,13 @@ class Application:
 
         self.gui.show_messagebox(Events.Application.ShowInfo(
             modal=True,
-            title=self._startup_text('GPMI Setup', 'GPMI 设置'),
-            message=self._startup_text(
-                'GPMI needs the exact Godot game executable before it can start.\n\n'
-                'Please select the game .exe itself, not the game folder. '
-                'The selected .exe path will be saved as the GPMI target.',
-                'GPMI 启动前需要指定准确的 Godot 游戏可执行文件。\n\n'
-                '请选择游戏的 .exe 文件本身，不要选择游戏文件夹。'
-                '所选 .exe 路径会保存为 GPMI 目标。'
-            ),
-            confirm_text=self._startup_text('Select .exe', '选择 .exe'),
+            title=L('message_title_gpmi_setup', 'GPMI Setup'),
+            message=L('message_text_gpmi_select_exe_required', """
+                GPMI needs the exact Godot game executable before it can start.
+                
+                Please select the game .exe itself, not the game folder. The selected .exe path will be saved as the GPMI target.
+            """),
+            confirm_text=L('message_button_select_exe', 'Select .exe'),
         ))
 
         try:
@@ -453,7 +438,7 @@ class Application:
             selected = filedialog.askopenfilename(
                 parent=self.gui,
                 initialdir=str(initial),
-                title=self._startup_text('Select Godot Game Executable', '选择 Godot 游戏可执行文件'),
+                title=str(L('filedialog_title_select_gpmi_exe', 'Select Godot Game Executable')),
                 filetypes=[('Applications', '*.exe'), ('All files', '*.*')],
             )
         except Exception as e:
@@ -469,11 +454,8 @@ class Application:
         if selected_path.suffix.lower() != '.exe' or not selected_path.is_file():
             self.gui.show_messagebox(Events.Application.ShowError(
                 modal=True,
-                title=self._startup_text('Invalid GPMI Target', '无效的 GPMI 目标'),
-                message=self._startup_text(
-                    'Please select a valid .exe file. Folder paths are not accepted by GPMI.',
-                    '请选择有效的 .exe 文件。GPMI 不接受文件夹路径。'
-                )
+                title=L('message_title_invalid_gpmi_target', 'Invalid GPMI Target'),
+                message=L('message_text_invalid_gpmi_target', 'Please select a valid .exe file. Folder paths are not accepted by GPMI.')
             ))
             Events.Fire(Events.Application.OpenSettings(tab_name='GENERAL_TAB'))
             return
