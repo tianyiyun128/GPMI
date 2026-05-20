@@ -74,6 +74,7 @@ python -m nuitka ^
   --msvc=latest ^
   --enable-plugin=tk-inter ^
   --windows-console-mode=disable ^
+  --assume-yes-for-downloads ^
   --output-dir=build ^
   --output-filename="GPMI.exe" ^
   --product-name="GPMI Launcher" ^
