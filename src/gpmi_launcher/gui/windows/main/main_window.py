@@ -3,8 +3,10 @@ import logging
 import sys
 
 from copy import deepcopy
+from threading import Thread
 
 import pyglet
+import psutil
 
 import core.event_manager as Events
 import core.config_manager as Config
@@ -119,6 +121,8 @@ class MainWindow(UIMainWindow):
         self.portrait_overlay_active = False
         self.portrait_hotkey_pressed = False
         self.portrait_hotkey_polling = False
+        self.portrait_game_process_name = ''
+        self.portrait_game_pid = 0
 
         Events.Subscribe(Events.Application.MoveWindow, lambda event: self.move(event.offset_x, event.offset_y))
         Events.Subscribe(Events.Application.ShowMessage, lambda event: self.show_messagebox(event))
@@ -126,7 +130,8 @@ class MainWindow(UIMainWindow):
         Events.Subscribe(Events.Application.ShowWarning, lambda event: self.show_messagebox(event))
         Events.Subscribe(Events.Application.ShowInfo, lambda event: self.show_messagebox(event))
         Events.Subscribe(Events.Application.OpenPortraitManager, lambda event: self.open_portrait_manager(overlay=event.overlay))
-        Events.Subscribe(Events.Application.GameStarted, lambda event: self.handle_game_started())
+        Events.Subscribe(Events.Application.GameStarted, lambda event: self.handle_game_started(event))
+        Events.Subscribe(Events.Application.GameStopped, lambda event: self.handle_game_stopped())
 
 
     def open_portrait_manager(self, overlay: bool = False):
@@ -144,13 +149,34 @@ class MainWindow(UIMainWindow):
         self.portrait_manager_window = PortraitManagerWindow(self, overlay=overlay or self.portrait_overlay_active)
         self.portrait_manager_window.focus_force()
 
-    def handle_game_started(self):
+    def handle_game_started(self, event):
         self.portrait_overlay_active = True
+        self.portrait_game_process_name = event.process_name
+        self.portrait_game_pid = int(event.pid or 0)
         if self.portrait_manager_window is not None and self.portrait_manager_window.winfo_exists():
             self.portrait_manager_window.set_overlay_mode(True)
+        if self.portrait_game_pid:
+            Thread(target=self.wait_for_portrait_game_exit, args=(self.portrait_game_pid,), daemon=True).start()
         if not self.portrait_hotkey_polling:
             self.portrait_hotkey_polling = True
             self.after(100, self.poll_portrait_hotkey)
+
+    def handle_game_stopped(self, event=None):
+        if event is not None and event.pid and event.pid != self.portrait_game_pid:
+            return
+        self.portrait_overlay_active = False
+        self.portrait_hotkey_pressed = False
+        self.portrait_game_process_name = ''
+        self.portrait_game_pid = 0
+        if self.portrait_manager_window is not None and self.portrait_manager_window.winfo_exists():
+            self.portrait_manager_window.set_overlay_mode(False)
+
+    def wait_for_portrait_game_exit(self, pid: int):
+        try:
+            psutil.Process(pid).wait()
+        except psutil.NoSuchProcess:
+            pass
+        self.after(0, Events.Fire, Events.Application.GameStopped(pid=pid))
 
     def poll_portrait_hotkey(self):
         if not self.portrait_overlay_active or not self.exists:

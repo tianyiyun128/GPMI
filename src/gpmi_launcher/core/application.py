@@ -75,7 +75,12 @@ class ApplicationEvents:
 
     @dataclass
     class GameStarted:
-        pass
+        process_name: str = ''
+        pid: int = 0
+
+    @dataclass
+    class GameStopped:
+        pid: int = 0
 
     @dataclass
     class RunPostLoad:
@@ -791,7 +796,9 @@ class Application:
                     process.wait()
 
             if Config.Launcher.active_importer == 'GPMI':
-                self.gui.after(100, Events.Fire, Events.Application.GameStarted())
+                process_name = Path(str(Config.Active.Importer.game_folder)).name
+                pid = int(getattr(Config.Active.Importer, 'runtime_game_pid', 0) or 0)
+                self.gui.after(100, Events.Fire, Events.Application.GameStarted(process_name=process_name, pid=pid))
         except UserWarning:
             self.is_locked = False
             self.gui.after(100, Events.Fire, Events.Application.Ready())

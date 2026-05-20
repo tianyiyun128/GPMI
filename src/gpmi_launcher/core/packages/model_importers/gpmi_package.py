@@ -260,6 +260,7 @@ class GPMIPackage(ModelImporterPackage):
                 'GPMI_PROFILE_DIR': str(profile_dir),
             },
         )
+        Config.Active.Importer.runtime_game_pid = pid
 
         Events.Fire(Events.Application.WaitForProcess(process_name=game_exe_path.name))
         deadline = time.time() + max(1, int(Config.Active.Importer.process_timeout))
