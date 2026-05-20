@@ -12,6 +12,11 @@ on:
         required: true
         type: boolean
         default: false
+      publish_release:
+        description: "Upload the MSI to the GitHub Release for this version"
+        required: true
+        type: boolean
+        default: true
   push:
     tags:
       - "v*.*.*"
@@ -43,12 +48,39 @@ jobs:
           if ($version.StartsWith("v")) {
             $version = $version.Substring(1)
           }
+          $releaseTag = "v$version"
           "GPMI_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GPMI_RELEASE_TAG=$releaseTag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "GPMI_MSI=GPMI-$version.msi" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Resolved version: $version"
 
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve release notes
+        shell: pwsh
+        run: |
+          $releaseNotes = ".github/release-notes/$env:GPMI_RELEASE_TAG.md"
+          if (-not (Test-Path $releaseNotes)) {
+            $releaseNotes = ".github/release-notes/$env:GPMI_VERSION.md"
+          }
+
+          if (Test-Path $releaseNotes) {
+            $releaseNotes = (Resolve-Path $releaseNotes).Path
+            Write-Host "Using release notes: $releaseNotes"
+          } else {
+            $releaseNotes = Join-Path $env:RUNNER_TEMP "GPMI-release-notes.md"
+            @(
+              "# GPMI $env:GPMI_VERSION"
+              ""
+              "Built from $env:GITHUB_SHA."
+              ""
+              "Installer: $env:GPMI_MSI"
+            ) | Set-Content -Path $releaseNotes -Encoding utf8
+            Write-Host "No versioned release notes found. Generated default notes."
+          }
+
+          "GPMI_RELEASE_NOTES=$releaseNotes" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -86,8 +118,13 @@ jobs:
           if-no-files-found: error
 
       - name: Upload MSI to GitHub Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.GPMI_RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: GPMI ${{ env.GPMI_VERSION }}
+          body_path: ${{ env.GPMI_RELEASE_NOTES }}
           files: dist/${{ env.GPMI_MSI }}
           fail_on_unmatched_files: true
+          overwrite_files: true
