@@ -37,12 +37,15 @@ class PortraitManagerWindow(ctk.CTkToplevel):
     PREVIEW_IMAGE_DEFAULT_WIDTH = 230
     PREVIEW_IMAGE_DEFAULT_HEIGHT = 320
 
-    def __init__(self, master):
+    def __init__(self, master, overlay: bool = False):
         super().__init__(master)
         self.title(str(L('portrait_manager_window_title', 'GPMI Portrait Manager')))
         self.geometry('1120x720')
         self.minsize(980, 620)
-        self.transient(master)
+        self.overrideredirect(True)
+        self.protocol('WM_DELETE_WINDOW', self.close)
+        self._drag_start_x = 0
+        self._drag_start_y = 0
 
         self.game_exe_path = self._configured_game_exe_path()
         self.profile_dir = game_profile_dir(self.game_exe_path) if self.game_exe_path else None
@@ -71,7 +74,22 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         self._build_summary()
         self._build_main()
         self._build_status()
+        self.set_overlay_mode(overlay)
         self.refresh_all(L('portrait_manager_status_ready', 'Ready.'))
+
+    def close(self):
+        self.destroy()
+
+    def set_overlay_mode(self, enabled: bool):
+        self.attributes('-alpha', 0.72 if enabled else 1.0)
+        self.attributes('-topmost', bool(enabled))
+
+    def _start_window_drag(self, event):
+        self._drag_start_x = event.x
+        self._drag_start_y = event.y
+
+    def _handle_window_drag(self, event):
+        self.geometry(f'+{event.x_root - self._drag_start_x}+{event.y_root - self._drag_start_y}')
 
     def _configured_game_exe_path(self) -> Path | None:
         configured = str(getattr(Config.Importers.GPMI.Importer, 'game_folder', '') or '').strip().strip('"')
@@ -95,15 +113,10 @@ class PortraitManagerWindow(ctk.CTkToplevel):
     def _build_header(self):
         header = ctk.CTkFrame(self, corner_radius=10)
         header.grid(row=0, column=0, sticky='ew', padx=14, pady=(14, 8))
-        header.grid_columnconfigure(1, weight=1)
+        header.grid_columnconfigure(0, weight=1)
+        header.bind('<ButtonPress-1>', self._start_window_drag)
+        header.bind('<B1-Motion>', self._handle_window_drag)
 
-        ctk.CTkLabel(
-            header,
-            text=L('portrait_manager_title', 'Portrait Manager'),
-            font=ctk.CTkFont(size=24, weight='bold'),
-        ).grid(
-            row=0, column=0, rowspan=2, sticky='w', padx=14, pady=12
-        )
         game_text = str(self.game_exe_path) if self.game_exe_path else L(
             'portrait_manager_no_game_exe',
             'No game .exe selected'
@@ -114,16 +127,20 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             text=L('portrait_manager_game_label', 'Game: {game_path}').format(game_path=game_text),
             anchor='w',
         )
-        self.game_label.grid(row=0, column=1, sticky='ew', padx=10, pady=(12, 2))
+        self.game_label.grid(row=0, column=0, sticky='ew', padx=14, pady=(12, 2))
+        self.game_label.bind('<ButtonPress-1>', self._start_window_drag)
+        self.game_label.bind('<B1-Motion>', self._handle_window_drag)
         self.profile_label = ctk.CTkLabel(
             header,
             text=L('portrait_manager_profile_label', 'Profile: {profile_path}').format(profile_path=profile_text),
             anchor='w',
         )
-        self.profile_label.grid(row=1, column=1, sticky='ew', padx=10, pady=(2, 12))
+        self.profile_label.grid(row=1, column=0, sticky='ew', padx=14, pady=(2, 12))
+        self.profile_label.bind('<ButtonPress-1>', self._start_window_drag)
+        self.profile_label.bind('<B1-Motion>', self._handle_window_drag)
 
         buttons = ctk.CTkFrame(header, fg_color='transparent')
-        buttons.grid(row=0, column=2, rowspan=2, sticky='e', padx=12, pady=10)
+        buttons.grid(row=0, column=1, rowspan=2, sticky='e', padx=12, pady=10)
         ctk.CTkButton(
             buttons,
             text=L('portrait_manager_open_mods_folder_button', 'Open Mods Folder'),
@@ -341,8 +358,17 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             self.summary_label.configure(wraplength=wraplength)
 
     def _build_status(self):
-        self.status_box = ctk.CTkTextbox(self, height=110, font=ctk.CTkFont(family='Consolas', size=12))
-        self.status_box.grid(row=3, column=0, sticky='ew', padx=14, pady=(8, 14))
+        status_frame = ctk.CTkFrame(self, fg_color='transparent')
+        status_frame.grid(row=3, column=0, sticky='ew', padx=14, pady=(8, 14))
+        status_frame.grid_columnconfigure(0, weight=1)
+        self.status_box = ctk.CTkTextbox(status_frame, height=110, font=ctk.CTkFont(family='Consolas', size=12))
+        self.status_box.grid(row=0, column=0, sticky='ew', padx=(0, 10), pady=0)
+        ctk.CTkButton(
+            status_frame,
+            text=L('portrait_manager_close_button', 'Close'),
+            width=112,
+            command=self.close,
+        ).grid(row=0, column=1, sticky='sew', pady=0)
 
     def open_profile(self):
         profile = self._profile_required()

@@ -116,26 +116,62 @@ class MainWindow(UIMainWindow):
         self.launcher_frame = None
         self.message_frame = None
         self.portrait_manager_window = None
+        self.portrait_overlay_active = False
+        self.portrait_hotkey_pressed = False
+        self.portrait_hotkey_polling = False
 
         Events.Subscribe(Events.Application.MoveWindow, lambda event: self.move(event.offset_x, event.offset_y))
         Events.Subscribe(Events.Application.ShowMessage, lambda event: self.show_messagebox(event))
         Events.Subscribe(Events.Application.ShowError, lambda event: self.show_messagebox(event))
         Events.Subscribe(Events.Application.ShowWarning, lambda event: self.show_messagebox(event))
         Events.Subscribe(Events.Application.ShowInfo, lambda event: self.show_messagebox(event))
-        Events.Subscribe(Events.Application.OpenPortraitManager, lambda event: self.open_portrait_manager())
+        Events.Subscribe(Events.Application.OpenPortraitManager, lambda event: self.open_portrait_manager(overlay=event.overlay))
+        Events.Subscribe(Events.Application.GameStarted, lambda event: self.handle_game_started())
 
 
-    def open_portrait_manager(self):
+    def open_portrait_manager(self, overlay: bool = False):
         from gui.windows.gpmi.portrait_manager_window import PortraitManagerWindow
 
         if Config.Launcher.active_importer != 'GPMI':
             Events.Fire(Events.Application.LoadImporter(importer_id='GPMI'))
 
         if self.portrait_manager_window is not None and self.portrait_manager_window.winfo_exists():
+            self.portrait_manager_window.set_overlay_mode(overlay or self.portrait_overlay_active)
+            self.portrait_manager_window.deiconify()
             self.portrait_manager_window.focus_force()
             return
 
-        self.portrait_manager_window = PortraitManagerWindow(self)
+        self.portrait_manager_window = PortraitManagerWindow(self, overlay=overlay or self.portrait_overlay_active)
+        self.portrait_manager_window.focus_force()
+
+    def handle_game_started(self):
+        self.portrait_overlay_active = True
+        if self.portrait_manager_window is not None and self.portrait_manager_window.winfo_exists():
+            self.portrait_manager_window.set_overlay_mode(True)
+        if not self.portrait_hotkey_polling:
+            self.portrait_hotkey_polling = True
+            self.after(100, self.poll_portrait_hotkey)
+
+    def poll_portrait_hotkey(self):
+        if not self.portrait_overlay_active or not self.exists:
+            self.portrait_hotkey_polling = False
+            return
+
+        key_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(0x50) & 0x8000)
+        if key_pressed and not self.portrait_hotkey_pressed:
+            self.toggle_portrait_overlay()
+        self.portrait_hotkey_pressed = key_pressed
+        self.after(60, self.poll_portrait_hotkey)
+
+    def toggle_portrait_overlay(self):
+        if self.portrait_manager_window is None or not self.portrait_manager_window.winfo_exists():
+            self.open_portrait_manager(overlay=True)
+            return
+        if self.portrait_manager_window.state() == 'normal':
+            self.portrait_manager_window.withdraw()
+            return
+        self.portrait_manager_window.set_overlay_mode(True)
+        self.portrait_manager_window.deiconify()
         self.portrait_manager_window.focus_force()
 
     @staticmethod

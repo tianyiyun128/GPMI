@@ -42,7 +42,7 @@ class ApplicationEvents:
 
     @dataclass
     class OpenPortraitManager:
-        pass
+        overlay: bool = False
 
     @dataclass
     class CloseSettings:
@@ -71,6 +71,10 @@ class ApplicationEvents:
 
     @dataclass
     class Launch:
+        pass
+
+    @dataclass
+    class GameStarted:
         pass
 
     @dataclass
@@ -785,6 +789,9 @@ class Application:
                 process = subprocess.Popen(Config.Active.Importer.run_post_load, shell=True)
                 if Config.Active.Importer.run_post_load_wait:
                     process.wait()
+
+            if Config.Launcher.active_importer == 'GPMI':
+                self.gui.after(100, Events.Fire, Events.Application.GameStarted())
         except UserWarning:
             self.is_locked = False
             self.gui.after(100, Events.Fire, Events.Application.Ready())
