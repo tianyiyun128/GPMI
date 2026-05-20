@@ -130,18 +130,18 @@ class LocaleEngine:
         locale_path = self.locales_path / locale_name
 
         try:
-            if EmbeddedResources.is_dir(embedded_locale_path):
+            if locale_path.is_dir():
+                for path in sorted(locale_path.iterdir()):
+                    if not path.is_file() or not path.suffix == '.toml':
+                        continue
+                    self.load_file_strings(path, tag)
+            elif EmbeddedResources.is_dir(embedded_locale_path):
                 for resource_path in EmbeddedResources.iter_files(embedded_locale_path, suffixes=['.toml']):
                     self.load_file_strings_from_bytes(
                         resource_path,
                         EmbeddedResources.read_bytes(resource_path),
                         tag,
                     )
-            else:
-                for path in sorted(locale_path.iterdir()):
-                    if not path.is_file() or not path.suffix == '.toml':
-                        continue
-                    self.load_file_strings(path, tag)
         except Exception as e:
             self.enable_locale = False
             raise Exception(f'Failed to load locale: {e}')

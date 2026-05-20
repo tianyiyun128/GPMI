@@ -160,7 +160,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             text=L('portrait_manager_close_button', 'Close'),
             width=92,
             command=self.close,
-        ).grid(row=0, column=2, rowspan=2, sticky='e', padx=(0, 12), pady=10)
+        ).grid(row=0, column=2, sticky='ne', padx=(0, 12), pady=(13, 0))
 
     def _build_summary(self):
         self.summary_label = None
