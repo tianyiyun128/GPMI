@@ -130,6 +130,10 @@ loc = "Open Mods Folder"
 src = "Open GPMI Folder"
 loc = "Open GPMI Folder"
 
+[portrait_manager_close_button]
+src = "Close"
+loc = "Close"
+
 [portrait_manager_import_page_button]
 src = "Import Mods"
 loc = "Import Mods"

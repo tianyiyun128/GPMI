@@ -114,6 +114,8 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         header = ctk.CTkFrame(self, corner_radius=10)
         header.grid(row=0, column=0, sticky='ew', padx=14, pady=(14, 8))
         header.grid_columnconfigure(0, weight=1)
+        header.grid_columnconfigure(1, weight=0)
+        header.grid_columnconfigure(2, weight=0)
         header.bind('<ButtonPress-1>', self._start_window_drag)
         header.bind('<B1-Motion>', self._handle_window_drag)
 
@@ -140,7 +142,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         self.profile_label.bind('<B1-Motion>', self._handle_window_drag)
 
         buttons = ctk.CTkFrame(header, fg_color='transparent')
-        buttons.grid(row=0, column=1, rowspan=2, sticky='e', padx=12, pady=10)
+        buttons.grid(row=0, column=1, rowspan=2, sticky='e', padx=(12, 8), pady=10)
         ctk.CTkButton(
             buttons,
             text=L('portrait_manager_open_mods_folder_button', 'Open Mods Folder'),
@@ -153,6 +155,12 @@ class PortraitManagerWindow(ctk.CTkToplevel):
             width=132,
             command=self.open_profile,
         ).pack(pady=3)
+        ctk.CTkButton(
+            header,
+            text=L('portrait_manager_close_button', 'Close'),
+            width=92,
+            command=self.close,
+        ).grid(row=0, column=2, rowspan=2, sticky='e', padx=(0, 12), pady=10)
 
     def _build_summary(self):
         self.summary_label = None
@@ -362,13 +370,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         status_frame.grid(row=3, column=0, sticky='ew', padx=14, pady=(8, 14))
         status_frame.grid_columnconfigure(0, weight=1)
         self.status_box = ctk.CTkTextbox(status_frame, height=110, font=ctk.CTkFont(family='Consolas', size=12))
-        self.status_box.grid(row=0, column=0, sticky='ew', padx=(0, 10), pady=0)
-        ctk.CTkButton(
-            status_frame,
-            text=L('portrait_manager_close_button', 'Close'),
-            width=112,
-            command=self.close,
-        ).grid(row=0, column=1, sticky='sew', pady=0)
+        self.status_box.grid(row=0, column=0, sticky='ew', padx=0, pady=0)
 
     def open_profile(self):
         profile = self._profile_required()

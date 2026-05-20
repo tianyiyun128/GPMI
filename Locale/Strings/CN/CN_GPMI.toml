@@ -130,6 +130,10 @@ loc = "打开 MOD 文件夹"
 src = "Open GPMI Folder"
 loc = "打开 GPMI 文件夹"
 
+[portrait_manager_close_button]
+src = "Close"
+loc = "关闭"
+
 [portrait_manager_import_page_button]
 src = "Import Mods"
 loc = "导入 MOD"
