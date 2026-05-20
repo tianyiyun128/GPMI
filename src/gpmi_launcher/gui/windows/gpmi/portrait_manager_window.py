@@ -418,6 +418,11 @@ class PortraitManagerWindow(ctk.CTkToplevel):
                     selected_sources[cid] = source_path
                     meta_changed = True
                 continue
+            if cid in selected_outfits and selected_id is None:
+                if cid in selected_sources:
+                    selected_sources.pop(cid, None)
+                    meta_changed = True
+                continue
             saved_source_path = selected_sources.get(cid)
             restored_id = None
             if saved_source_path:
@@ -429,9 +434,12 @@ class PortraitManagerWindow(ctk.CTkToplevel):
                 selected_outfits[cid] = restored_id
                 meta_changed = True
             else:
-                selected_outfits.pop(cid, None)
-                selected_sources.pop(cid, None)
-                meta_changed = True
+                if cid in selected_outfits:
+                    selected_outfits.pop(cid, None)
+                    meta_changed = True
+                if cid in selected_sources:
+                    selected_sources.pop(cid, None)
+                    meta_changed = True
         save_mod_meta(profile, meta)
         if imported_count or meta_changed:
             self._write_runtime(profile)

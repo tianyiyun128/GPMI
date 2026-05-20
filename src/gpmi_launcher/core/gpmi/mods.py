@@ -325,10 +325,7 @@ def import_user_mod(profile_dir: Path, cid: str, source_name: str) -> dict:
     char_meta.setdefault("outfits", {})[outfit_id] = outfit_meta
     selected_outfits = meta.setdefault("selected_outfits", {})
     selected_sources = meta.setdefault("selected_sources", {})
-    if cid not in selected_outfits:
-        selected_outfits[cid] = outfit_id
-        selected_sources[cid] = source_path
-    elif selected_outfits.get(cid) == outfit_id:
+    if selected_outfits.get(cid) == outfit_id:
         selected_sources[cid] = source_path
     save_mod_meta(profile_dir, meta)
     return outfit_meta
@@ -393,7 +390,7 @@ def select_imported_outfit(profile_dir: Path, cid: str, outfit_id: str) -> dict:
 def clear_selected_outfit(profile_dir: Path, cid: str) -> None:
     meta = load_mod_meta(profile_dir)
     cid = character_id(cid)
-    meta.setdefault("selected_outfits", {}).pop(cid, None)
+    meta.setdefault("selected_outfits", {})[cid] = None
     meta.setdefault("selected_sources", {}).pop(cid, None)
     save_mod_meta(profile_dir, meta)
 
@@ -452,7 +449,9 @@ def build_live_portrait_manifest(profile_dir: Path) -> dict:
     rules: List[dict] = []
     issues: Dict[str, List[str]] = {}
 
-    for cid in sorted(meta.get("selected_outfits", {}).keys()):
+    for cid, outfit_id in sorted(meta.get("selected_outfits", {}).items()):
+        if not outfit_id:
+            continue
         outfit = _selected_outfit(meta, cid)
         if outfit is None:
             issues.setdefault(cid, []).append("selected outfit metadata missing")
