@@ -97,7 +97,20 @@ jobs:
       - name: Install WiX Toolset
         shell: pwsh
         run: |
-          dotnet tool install --global wix
+          $attempts = 3
+          for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+            dotnet tool install --global wix
+            if ($LASTEXITCODE -eq 0) {
+              break
+            }
+
+            if ($attempt -eq $attempts) {
+              exit $LASTEXITCODE
+            }
+
+            Write-Warning "WiX install failed on attempt $attempt of $attempts. Retrying in 20 seconds..."
+            Start-Sleep -Seconds 20
+          }
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Configure WiX
