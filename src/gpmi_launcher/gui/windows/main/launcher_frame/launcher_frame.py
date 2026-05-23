@@ -1,9 +1,5 @@
-import webbrowser
-
 import core.event_manager as Events
-import core.path_manager as Paths
 import core.config_manager as Config
-import gui.vars as Vars
 
 from core.locale_manager import L
 
@@ -423,105 +419,17 @@ class PackageVersionText(UIImageButton):
             fill='#999999',
             activefill='white',
             anchor='nw',
-            command=self.open_dev_blog_link,
+            command=lambda: None,
         )
         defaults.update(kwargs)
         super().__init__(**defaults)
         self.stage = None
         self.package_name = ''
-        self.set_tooltip(self.get_tooltip, delay = 0)
         self.subscribe(Events.GUI.LauncherFrame.StageUpdate, self.handle_stage_update)
-        self.package_aliases = {
-            'Launcher': 'GPMI',
-            'XXMI': 'XXMI DLL',
-        }
-        self.dev_blog_links = {
-            'XXMI-Launcher': 'https://www.patreon.com/collection/1552149',
-            'XXMI-Libs-Package': 'https://www.patreon.com/collection/1552154',
-        }
-        self.bind("<ButtonRelease-3>", self.open_changelog_link)
 
     def handle_stage_update(self, event):
         self.stage = event.stage
         self.show(self.stage == Stage.Ready and Config.Launcher.active_importer != 'XXMI')
-
-    def open_dev_blog_link(self):
-        package = Events.Call(Events.PackageManager.GetPackage(self.package_name))
-        metadata = package.metadata
-        dev_blog_link = self.dev_blog_links.get(metadata.github_repo_name, None)
-        if dev_blog_link is not None:
-            webbrowser.open(dev_blog_link)
-        else:
-            webbrowser.open(f'https://github.com/{metadata.github_repo_owner}/{metadata.github_repo_name}/releases')
-
-    def open_changelog_link(self, event):
-        package = Events.Call(Events.PackageManager.GetPackage(self.package_name))
-        metadata = package.metadata
-        webbrowser.open(f'https://github.com/{metadata.github_repo_owner}/{metadata.github_repo_name}/releases')
-
-    def get_tooltip(self):
-        package = Events.Call(Events.PackageManager.GetPackage(self.package_name))
-
-        installed_release_notes = package.cfg.deployed_release_notes
-
-        if package.installed_version == package.cfg.latest_version:
-            package_release_notes = L('package_release_notes_up_to_date', """
-                # What's new in {package_name} v{new_package_version}:
-                {installed_release_notes}
-            """)
-            installed_release_notes = installed_release_notes or package.cfg.latest_release_notes
-        else:
-            package_release_notes = L('package_release_notes_update_available', """
-                # Update {package_name} to v{new_package_version} for:
-                {latest_release_notes}
-            """)
-
-        if not package.cfg.deployed_release_notes and not package.cfg.latest_release_notes:
-            package_release_notes = L('package_release_notes_not_installed', """
-                Press **Install** button to setup the package.
-            """)
-
-        if self.package_name == 'Launcher':
-            package_description = L('package_description_launcher', """
-                *This package is the GPMI launcher app itself and defines its features.*
-            """)
-        elif self.package_name == 'XXMI':
-            package_description = L('package_description_xxmi_libraries', """
-                *XXMI Libraries package is custom 3dmigoto build fiddling with data between GPU and a game process.*
-            """)
-        else:
-            package_description = L('package_description_model_importer', """
-                *Model Importer package offers a set of API functions required for mods to work in given game.*
-            """)
-        if self.package_name in ['Launcher', 'XXMI']:
-            actions_tooltip = L('package_description_tooltip_open_github_changelog', """
-                <font color="#3366ff">*<u>Left-Click</u> to open {package_name} Dev Blog on Patreon.*</font>
-                <font color="#3366ff">*<u>Right-Click</u> to open {package_name} GitHub releases for full changelog.*</font>
-            """)
-        else:
-            actions_tooltip = L('package_description_tooltip_open_dev_blog', """
-                <font color="#3366ff">*<u>Left-Click</u> to open {package_name} GitHub releases for full changelog.*</font>
-            """)
-
-        txt = L('package_release_notes', """
-            {package_release_notes}
-            
-            {actions_tooltip}
-            <font color="#aaaaaa">{package_description}</font>
-        """).format(
-            package_release_notes=package_release_notes,
-            actions_tooltip=actions_tooltip
-        )
-
-        return txt.format(
-            package_name=self.package_aliases.get(package.metadata.package_name, package.metadata.package_name),
-            package_description=package_description,
-            active_importer=Config.Launcher.active_importer,
-            installed_package_version=package.installed_version,
-            new_package_version=package.cfg.latest_version,
-            latest_release_notes=package.cfg.latest_release_notes,
-            installed_release_notes=installed_release_notes
-        )
 
 
 class LauncherVersionText(PackageVersionText):
@@ -582,7 +490,3 @@ class ImporterVersionText(PackageVersionText):
             self.set_text(f'{package_name} {package_state.installed_version}')
         else:
             self.set_text(f'{package_name} N/A')
-
-    def get_tooltip(self, package_name=''):
-        self.package_name = Config.Launcher.active_importer
-        return super().get_tooltip()
