@@ -165,9 +165,7 @@ def verify_path(directory_path: Path):
 class Paths:
     Root: Path = Path('')
     Resources: Path = Path('Resources')
-    Themes: Path = Path('Themes')
     Backups: Path = Path('Backups')
-    Locale: Path = Path('Locale')
 
     TRANSIENT_ERRNOS = {errno.EACCES, errno.EBUSY, errno.ENOENT, 32, 145}
     CHUNK_SIZE = 8 * 1024 * 1024
