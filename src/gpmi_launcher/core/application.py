@@ -472,25 +472,10 @@ class Application:
         self._save_gpmi_executable(selected_path)
 
     def load_config(self):
-        cfg_backup_path = Paths.App.Backups / Config.Config.config_path.name
         try:
             Config.Config.load()
-            # Backup last successfully loaded config
-            if Config.Config.config_path.is_file():
-                Paths.App.copy_file(Config.Config.config_path, cfg_backup_path)
         except Exception as e:
-            if Config.Config.config_path.is_file():
-                error_dialogue = Events.Application.ShowError(
-                    modal=True,
-                    confirm_text=L('message_button_load_backup_config', 'Load Backup'),
-                    cancel_text=L('message_button_load_default_config', 'Load Default'),
-                    message=L('message_text_config_load_failed', 'Failed to load configuration!'),
-                )
-                user_requested_backup_load = self.gui.show_messagebox(error_dialogue)
-                if user_requested_backup_load:
-                    Config.Config.load(cfg_backup_path)
-            else:
-                raise e
+            raise e
 
     def handle_load_locale(self, event: ApplicationEvents.LoadLocale):
         Locale.Locale.set_active_locale(event.locale_name, skip_reload=event.skip_reload)

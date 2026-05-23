@@ -2,7 +2,7 @@ import logging
 import json
 
 from pathlib import Path, PurePosixPath
-from dataclasses import dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 from typing import Union, Dict, Any, Optional, List
 
 from dacite import from_dict
@@ -46,15 +46,24 @@ class AppConfig:
         return Paths.App.Root / 'GPMI Config.json'
 
     @property
-    def legacy_config_path(self):
-        return Paths.App.Root / 'XXMI Launcher Config.json'
-
-    @property
     def Active(self) -> gpmi_package.GPMIPackageConfig:
         global Active
         return Active
 
-    def as_dict(self, obj: Any) -> Dict[str, Any]:
+    @staticmethod
+    def _field_default(obj_field):
+        if obj_field.default is not MISSING:
+            return obj_field.default
+        if obj_field.default_factory is not MISSING:
+            return obj_field.default_factory()
+        return MISSING
+
+    @classmethod
+    def _is_default_field_value(cls, obj_field, value) -> bool:
+        default = cls._field_default(obj_field)
+        return default is not MISSING and value == default
+
+    def as_dict(self, obj: Any) -> Any:
         result = {}
 
         if hasattr(obj, '__dataclass_fields__'):
@@ -63,19 +72,31 @@ class AppConfig:
                 # Fields with 'init=False' contain app state data that isn't supposed to be saved
                 if not obj_field.init:
                     continue
+                if isinstance(obj, AppConfig) and obj_field.name == 'Packages':
+                    continue
                 # Recursively process nested dataclass
                 value = getattr(obj, obj_field.name)
 
                 if hasattr(value, '__dataclass_fields__') or isinstance(value, dict | list | tuple):
-                    result[obj_field.name] = self.as_dict(value)
+                    converted_value = self.as_dict(value)
+                    if self._is_default_field_value(obj_field, value):
+                        continue
+                    if converted_value in ({}, [], ()):
+                        continue
+                    result[obj_field.name] = converted_value
                 else:
+                    if self._is_default_field_value(obj_field, value):
+                        continue
                     result[obj_field.name] = value
 
         elif isinstance(obj, dict):
             # Process dict object
             for obj_field, value in obj.items():
                 if hasattr(value, '__dataclass_fields__') or isinstance(value, dict | list | tuple):
-                    result[obj_field] = self.as_dict(value)
+                    converted_value = self.as_dict(value)
+                    if converted_value in ({}, [], ()):
+                        continue
+                    result[obj_field] = converted_value
                 else:
                     result[obj_field] = value
 
@@ -95,7 +116,7 @@ class AppConfig:
         return json.dumps(cfg, indent=4)
 
     def from_json(self, config_path: Path):
-        cfg = self.as_dict(self)
+        cfg = {}
         if config_path.is_file():
             cfg.update(json.loads(Paths.App.read_text(config_path)))
         # Legacy XXMI/GPMI builds stored local signing state here. GPMI no longer
@@ -104,13 +125,12 @@ class AppConfig:
         for key, value in from_dict(data_class=AppConfig, data=cfg).__dict__.items():
             if hasattr(self, key):
                 setattr(self, key, value)
+        self.sanitize()
         if self.Launcher.gui_theme:
             self.active_theme = self.Launcher.gui_theme
 
     def load(self, cfg_path=None):
         try:
-            if cfg_path is None and not self.config_path.is_file() and self.legacy_config_path.is_file():
-                cfg_path = self.legacy_config_path
             Config.from_json(cfg_path or self.config_path)
         except Exception as e:
             log.exception(e)
@@ -125,6 +145,16 @@ class AppConfig:
 
     def save(self):
         Paths.App.write_file(self.config_path, Config.as_json())
+
+    def sanitize(self):
+        self.Launcher.active_importer = 'GPMI'
+        self.Launcher.enabled_importers = ['GPMI']
+        self.Importers.GPMI.Importer.importer_folder = ''
+        self.Packages.packages = {
+            package_name: package_config
+            for package_name, package_config in self.Packages.packages.items()
+            if package_name in {'Launcher', 'GPMI'}
+        }
 
     def run_patch_195(self):
         pass

@@ -193,7 +193,6 @@ class Paths:
 
     def verify(self):
         verify_path(self.Root)
-        verify_path(self.Backups)
 
     @staticmethod
     def is_subpath(child, parent):

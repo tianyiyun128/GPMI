@@ -433,6 +433,7 @@ class PackageManager:
         if packages is not None:
             for package in packages:
                 self.register_package(package)
+            self.prune_config_packages()
         self.update_running = False
         self.api_connection_refused = False
         self.api_connection_refused_notified = False
@@ -458,6 +459,17 @@ class PackageManager:
 
         if package.metadata.auto_load:
             self.load_package(package)
+
+    def prune_config_packages(self):
+        Config.Packages.packages = {
+            package_name: package_config
+            for package_name, package_config in Config.Packages.packages.items()
+            if package_name in self.packages
+        }
+        for package_name, package in self.packages.items():
+            if package_name not in Config.Packages.packages:
+                Config.Packages.packages[package_name] = PackageConfig()
+            package.cfg = Config.Packages.packages[package_name]
 
     def load_package(self, package: Union[Package, str]):
         package = self.get_package(package)

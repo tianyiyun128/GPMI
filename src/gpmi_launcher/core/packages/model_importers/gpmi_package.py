@@ -44,6 +44,7 @@ class GPMIConfig(ModelImporterConfig):
     overwrite_ini: bool = False
     process_start_method: str = 'Native'
     process_timeout: int = 30
+    shortcut_deployed: bool = True
 
     # Generic Godot target/runtime settings used by the GPMI portrait manager.
     custom_game_exe_name: str = ''
