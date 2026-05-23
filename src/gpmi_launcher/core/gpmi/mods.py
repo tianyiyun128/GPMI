@@ -51,10 +51,6 @@ def _portable_path(path: Path) -> str:
     return str(path.resolve()).replace("\\", "/")
 
 
-def ensure_package_profile(importer_path: Path) -> None:
-    importer_path.mkdir(parents=True, exist_ok=True)
-
-
 def ensure_game_profile(profile_dir: Path) -> None:
     profile_dir.mkdir(parents=True, exist_ok=True)
     (profile_dir / USER_MODS_DIR).mkdir(parents=True, exist_ok=True)

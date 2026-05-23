@@ -20,8 +20,6 @@ for /f "tokens=1-4 delims=." %%a in ("%VERSION%") do (
 set "BUILD_DIR=%CD%\build"
 set "STAGE_DIR=%CD%\dist\GPMI"
 set "BIN_DIR=%STAGE_DIR%\Resources\Bin"
-set "RUNTIME_SRC=%CD%\Resources\Packages\GPMI\Runtime"
-set "RUNTIME_DST=%STAGE_DIR%\Resources\Packages\GPMI\Runtime"
 set "MSI_OUT=%CD%\dist\GPMI-%VERSION%.msi"
 set "WXS=%CD%\build\msi\GPMI.wxs"
 
@@ -78,12 +76,6 @@ if not defined NUITKA_DIST (
 
 robocopy "%NUITKA_DIST%" "%BIN_DIR%" /E /NFL /NDL /NJH /NJS /NP
 if %ERRORLEVEL% GEQ 8 exit /b %ERRORLEVEL%
-
-if exist "%RUNTIME_SRC%" (
-    mkdir "%RUNTIME_DST%"
-    robocopy "%RUNTIME_SRC%" "%RUNTIME_DST%" /E /NFL /NDL /NJH /NJS /NP
-    if %ERRORLEVEL% GEQ 8 exit /b %ERRORLEVEL%
-)
 
 python scripts\package_msi.py --version "%VERSION%" --stage-dir "%STAGE_DIR%" --output "%MSI_OUT%" --wxs "%WXS%"
 if errorlevel 1 exit /b 1

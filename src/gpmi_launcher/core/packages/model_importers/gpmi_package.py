@@ -1,6 +1,5 @@
 import logging
 import shlex
-import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -19,7 +18,6 @@ from core.gpmi.mods import (
     RUNTIME_MANIFEST_FILE,
     build_live_portrait_manifest,
     ensure_game_profile,
-    ensure_package_profile,
     game_profile_dir,
 )
 
@@ -40,7 +38,7 @@ class GPMIConfig(ModelImporterConfig):
     game_exe_names: List[str] = field(default_factory=lambda: [])
     game_folder_names: List[str] = field(default_factory=lambda: [])
     game_folder_children: List[str] = field(default_factory=lambda: [])
-    importer_folder: str = 'Resources/Packages/GPMI/'
+    importer_folder: str = ''
     use_launch_options: bool = False
     launch_options: str = ''
     overwrite_ini: bool = False
@@ -111,19 +109,13 @@ class GPMIPackage(ModelImporterPackage):
         return False
 
     def get_installed_version(self):
-        try:
-            ensure_package_profile(Config.Importers.GPMI.Importer.importer_path)
-            return GPMI_VERSION
-        except Exception:
-            log.exception('Failed to initialize GPMI profile')
-            return ''
+        return GPMI_VERSION
 
     def install_latest_version(self, clean):
         Events.Fire(Events.PackageManager.InitializeInstallation())
-        ensure_package_profile(Config.Active.Importer.importer_path)
 
     def validate_package_files(self):
-        ensure_package_profile(Config.Active.Importer.importer_path)
+        pass
 
     def create_shortcut(self):
         # Generic Godot targets do not have a stable executable name, so GPMI avoids
@@ -131,7 +123,6 @@ class GPMIPackage(ModelImporterPackage):
         Config.Active.Importer.shortcut_deployed = True
 
     def optimize_mods(self, event):
-        ensure_package_profile(Config.Active.Importer.importer_path)
         if not event.silent:
             Events.Fire(Events.Application.ShowInfo(
                 modal=True,
@@ -202,7 +193,6 @@ class GPMIPackage(ModelImporterPackage):
         disabled_dir = game_dir / 'HAModManagerData' / 'MOD_disabled'
         disabled_bridge = disabled_dir / LIVE_BRIDGE_PATCH_NAME
         disabled_legacy_bridge = disabled_dir / LEGACY_LIVE_BRIDGE_PATCH_NAME
-        bundled_bridge = Config.Active.Importer.importer_path / 'Runtime' / LIVE_BRIDGE_PATCH_NAME
 
         if active_bridge.is_file():
             log.info('GPMI live bridge patch is active: %s', active_bridge)
@@ -211,15 +201,6 @@ class GPMIPackage(ModelImporterPackage):
         if legacy_bridge.is_file():
             log.info('Legacy GPMI live bridge patch is active: %s', legacy_bridge)
             return
-
-        if bundled_bridge.is_file():
-            try:
-                mod_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(bundled_bridge, active_bridge)
-                log.info('Installed GPMI live bridge patch: %s', active_bridge)
-                return
-            except Exception as exc:
-                raise ValueError(f'Failed to install {LIVE_BRIDGE_PATCH_NAME} into {mod_dir}: {exc}') from exc
 
         if disabled_bridge.is_file() or disabled_legacy_bridge.is_file():
             log.warning('GPMI live bridge patch exists but is disabled under %s', disabled_dir)
@@ -234,8 +215,6 @@ class GPMIPackage(ModelImporterPackage):
         )
 
     def _prepare_runtime_profile(self):
-        importer_path = Config.Active.Importer.importer_path
-        ensure_package_profile(importer_path)
         game_path = self.validate_game_path(Config.Active.Importer.game_folder)
         game_exe_path = self.validate_game_exe_path(game_path)
         profile_dir = game_profile_dir(game_exe_path)
