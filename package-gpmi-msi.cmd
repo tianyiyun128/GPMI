@@ -40,23 +40,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-wix extension list 2>nul | findstr /I /C:"WixToolset.UI.wixext" >nul
-if errorlevel 1 (
-    echo [GPMI] WiX UI extension was not found. Installing it now...
-    wix extension add WixToolset.UI.wixext
-    if errorlevel 1 (
-        echo [GPMI][ERROR] Failed to install WiX UI extension.
-        echo [GPMI][ERROR] Run this manually, then retry:
-        echo [GPMI][ERROR]   wix extension add WixToolset.UI.wixext
-        exit /b 1
-    )
-)
+call :EnsureWixExtension WixToolset.UI.wixext
+if errorlevel 1 exit /b 1
 
-wix extension list 2>nul | findstr /I /C:"WixToolset.UI.wixext" >nul
-if errorlevel 1 (
-    echo [GPMI][ERROR] WiX UI extension is still not available after installation.
-    exit /b 1
-)
+call :EnsureWixExtension WixToolset.Util.wixext
+if errorlevel 1 exit /b 1
 
 set "NUITKA_DIST="
 for %%D in ("%BUILD_DIR%\app.dist" "%BUILD_DIR%\GPMI.dist" "%BUILD_DIR%\GPMI Launcher.dist") do (
@@ -94,6 +82,28 @@ if errorlevel 1 exit /b 1
 echo.
 echo [GPMI] MSI package:
 echo [GPMI]   "%MSI_OUT%"
+exit /b 0
+
+:EnsureWixExtension
+set "WIX_EXTENSION=%~1"
+wix extension list 2>nul | findstr /I /C:"%WIX_EXTENSION%" >nul
+if not errorlevel 1 exit /b 0
+
+echo [GPMI] WiX extension was not found: %WIX_EXTENSION%
+echo [GPMI] Installing it now...
+wix extension add %WIX_EXTENSION%
+if errorlevel 1 (
+    echo [GPMI][ERROR] Failed to install WiX extension: %WIX_EXTENSION%
+    echo [GPMI][ERROR] Run this manually, then retry:
+    echo [GPMI][ERROR]   wix extension add %WIX_EXTENSION%
+    exit /b 1
+)
+
+wix extension list 2>nul | findstr /I /C:"%WIX_EXTENSION%" >nul
+if errorlevel 1 (
+    echo [GPMI][ERROR] WiX extension is still not available after installation: %WIX_EXTENSION%
+    exit /b 1
+)
 exit /b 0
 
 :BadVersion
