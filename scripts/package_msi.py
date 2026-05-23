@@ -40,7 +40,7 @@ def write_wxs(stage_dir: Path, wxs_path: Path, version: str) -> None:
 
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        '<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">',
+        '<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">',
         f'  <Package Name="GPMI" Manufacturer="GPMI" Version="{escape(version)}" UpgradeCode="{UPGRADE_CODE}" Scope="perUser">',
         '    <MajorUpgrade DowngradeErrorMessage="A newer version of GPMI is already installed." />',
         '    <MediaTemplate EmbedCab="yes" />',
@@ -100,6 +100,9 @@ def write_wxs(stage_dir: Path, wxs_path: Path, version: str) -> None:
     lines.extend([
         f'        <Component Id="CmpInstallDirRegistry" Guid="{INSTALL_DIR_REGISTRY_COMPONENT_GUID}">',
         '          <RemoveFile Id="RemoveGPMILog" Name="GPMI Log.txt" On="uninstall" />',
+        '          <RemoveFile Id="RemoveGPMIConfig" Name="GPMI Config.json" On="uninstall" />',
+        '          <RemoveFile Id="RemoveGPMILocale" Name="GPMI Locale.cfg" On="uninstall" />',
+        '          <util:RemoveFolderEx Id="RemoveAPPDIRTree" On="uninstall" Property="APPDIR" />',
     ])
     for directory, directory_id in sorted(
         ((p, d) for p, d in directories.items() if p != stage_dir),
@@ -145,7 +148,17 @@ def main() -> int:
 
     write_wxs(args.stage_dir.resolve(), args.wxs.resolve(), args.version)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["wix", "build", str(args.wxs), "-ext", "WixToolset.UI.wixext", "-o", str(args.output)], check=True)
+    subprocess.run([
+        "wix",
+        "build",
+        str(args.wxs),
+        "-ext",
+        "WixToolset.UI.wixext",
+        "-ext",
+        "WixToolset.Util.wixext",
+        "-o",
+        str(args.output),
+    ], check=True)
     print(f"[OK] Wrote {args.output}")
     return 0
 
