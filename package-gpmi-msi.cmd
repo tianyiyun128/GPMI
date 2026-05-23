@@ -20,13 +20,17 @@ set "MSI_OUT=%CD%\dist\GPMI-%VERSION%.msi"
 set "WXS=%CD%\build\msi\GPMI.wxs"
 
 echo [GPMI] Packaging MSI from existing launcher output.
-echo [GPMI] No build.bat, compiler, or Nuitka build will be run.
+echo [GPMI] Embedded resources will be regenerated first.
+echo [GPMI] Compiler and Nuitka build will not be run.
 
 where python.exe >nul 2>nul
 if errorlevel 1 (
     echo [GPMI][ERROR] python.exe not found in PATH.
     exit /b 1
 )
+
+call build.bat
+if errorlevel 1 exit /b 1
 
 where wix.exe >nul 2>nul
 if errorlevel 1 (
