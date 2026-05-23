@@ -14,7 +14,7 @@ import core.config_manager as Config
 from core.embedded_resources import EmbeddedResources
 from core.locale_manager import L
 
-from customtkinter import set_appearance_mode
+from customtkinter import CTkButton, CTkFrame, CTkLabel, CTkToplevel, set_appearance_mode
 from customtkinter.windows.widgets.theme import ThemeManager
 
 from gui.classes.windows import UIMainWindow, limit_scaling
@@ -358,6 +358,125 @@ class MainWindow(UIMainWindow):
     def close(self):
         Events.Fire(Events.Application.Ready())
         super().close()
+
+    def show_startup_language_dialog(self, locales, active_locale_name: str = '') -> str:
+        if not self.exists:
+            return active_locale_name
+
+        locales = list(locales or [])
+        if not locales:
+            return active_locale_name
+
+        locale_names = {locale.name for locale in locales}
+        detected_locale_name = active_locale_name if active_locale_name in locale_names else locales[0].name
+        result = {'locale_name': detected_locale_name}
+
+        dialog = CTkToplevel(self)
+        dialog.withdraw()
+        dialog.overrideredirect(True)
+        dialog.transient(self)
+        dialog.configure(fg_color='#1e2024')
+
+        dialog_width = 560
+        dialog_height = min(420, 188 + (len(locales) * 56))
+
+        self.update_idletasks()
+        root_width = max(self.winfo_width(), self.cfg.width)
+        root_height = max(self.winfo_height(), self.cfg.height)
+        root_x = self.winfo_rootx()
+        root_y = self.winfo_rooty()
+        x = root_x + max((root_width - dialog_width) // 2, 0)
+        y = root_y + max((root_height - dialog_height) // 2, 0)
+        dialog.geometry(f'{dialog_width}x{dialog_height}+{x}+{y}')
+
+        container = CTkFrame(
+            dialog,
+            fg_color='#1e2024',
+            border_color='#666b74',
+            border_width=2,
+            corner_radius=22,
+        )
+        container.pack(fill='both', expand=True)
+        container.grid_columnconfigure(0, weight=1)
+
+        close_button = CTkButton(
+            container,
+            text='×',
+            width=34,
+            height=34,
+            corner_radius=17,
+            fg_color='transparent',
+            hover_color='#343842',
+            text_color='#f1f3f5',
+            font=('Microsoft YaHei UI', 28, 'bold'),
+            command=lambda: choose(detected_locale_name),
+        )
+        close_button.place(relx=1.0, x=-24, y=18, anchor='ne')
+
+        title = CTkLabel(
+            container,
+            text='Language / 语言',
+            anchor='w',
+            text_color='#ffffff',
+            font=('Microsoft YaHei UI', 30, 'bold'),
+        )
+        title.grid(row=0, column=0, sticky='ew', padx=(34, 70), pady=(28, 4))
+
+        subtitle = CTkLabel(
+            container,
+            text='Choose the launcher language. / 请选择启动器语言。',
+            anchor='w',
+            text_color='#f2f4f8',
+            font=('Microsoft YaHei UI', 18),
+        )
+        subtitle.grid(row=1, column=0, sticky='ew', padx=34, pady=(0, 18))
+
+        button_frame = CTkFrame(container, fg_color='transparent')
+        button_frame.grid(row=2, column=0, sticky='nsew', padx=34, pady=(0, 28))
+        button_frame.grid_columnconfigure(0, weight=1)
+
+        def close_dialog():
+            try:
+                dialog.grab_release()
+            except Exception:
+                pass
+            if dialog.winfo_exists():
+                dialog.destroy()
+
+        def choose(locale_name: str):
+            result['locale_name'] = locale_name
+            close_dialog()
+
+        for row, locale in enumerate(locales):
+            is_detected = locale.name == detected_locale_name
+            label = f'{locale.display_name} ({locale.name})'
+            if is_detected:
+                label = f'{label}    Detected / 检测'
+            language_button = CTkButton(
+                button_frame,
+                text=label,
+                height=46,
+                corner_radius=8,
+                anchor='w',
+                fg_color='#2e67d1' if is_detected else '#2b2e35',
+                hover_color='#3a78e5' if is_detected else '#3a3f49',
+                text_color='#ffffff',
+                font=('Microsoft YaHei UI', 18),
+                command=lambda name=locale.name: choose(name),
+            )
+            language_button.grid(row=row, column=0, sticky='ew', pady=(0, 10))
+
+        dialog.bind('<Escape>', lambda _event: choose(detected_locale_name))
+        dialog.bind('<Return>', lambda _event: choose(result['locale_name']))
+        dialog.protocol('WM_DELETE_WINDOW', lambda: choose(detected_locale_name))
+
+        dialog.deiconify()
+        dialog.lift()
+        dialog.focus_force()
+        dialog.grab_set()
+        self.wait_window(dialog)
+
+        return result['locale_name']
 
     def show_messagebox(self, event=None, **kwargs):
         if not self.exists:

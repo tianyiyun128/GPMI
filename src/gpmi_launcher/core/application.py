@@ -386,28 +386,14 @@ class Application:
 
             active_locale_name = Locale.Locale.active_locale.name if Locale.Locale.active_locale is not None else ''
             locales = sorted(locales, key=lambda item: item.name != active_locale_name)
-            locale_options = [f'{locale.display_name} ({locale.name})' for locale in locales]
-
-            response = self.gui.show_messagebox(Events.Application.ShowDialogue(
-                modal=True,
-                title='Language / 语言',
-                message=(
-                    'Select the launcher language before continuing.\n\n'
-                    '继续之前请选择启动器语言。\n\n'
-                    '{radio_widget}'
-                ),
-                confirm_text='Continue / 继续',
-                cancel_text='Use detected / 使用检测语言',
-                radio_options=locale_options,
-            ))
-
-            selected_locale = None
-            if isinstance(response, tuple):
-                accepted, selected_index = response
-                if accepted is True and 0 <= selected_index < len(locales):
-                    selected_locale = locales[selected_index]
-                elif accepted is False:
-                    selected_locale = locales[0]
+            selected_locale_name = self.gui.show_startup_language_dialog(
+                locales=locales,
+                active_locale_name=active_locale_name,
+            )
+            selected_locale = next(
+                (locale for locale in locales if locale.name == selected_locale_name),
+                None,
+            )
 
             if selected_locale is None:
                 return

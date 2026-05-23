@@ -11,6 +11,7 @@ from xml.sax.saxutils import escape
 UPGRADE_CODE = "2FE50C15-4B01-4C73-9E87-6F4A1F921A80"
 INSTALL_DIR_REGISTRY_KEY = "Software\\GPMI"
 INSTALL_DIR_REGISTRY_VALUE = "InstallDir"
+INSTALL_DIR_REMOVE_PROPERTY = "GPMIINSTALLDIR"
 SHORTCUTS_COMPONENT_GUID = "F86D7E2F-2B4A-46C3-A46E-5B40D2D74A1C"
 INSTALL_DIR_REGISTRY_COMPONENT_GUID = "5C5AFC80-770E-4B35-8D7E-B44C6188B741"
 
@@ -42,14 +43,18 @@ def write_wxs(stage_dir: Path, wxs_path: Path, version: str) -> None:
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">',
         f'  <Package Name="GPMI" Manufacturer="GPMI" Version="{escape(version)}" UpgradeCode="{UPGRADE_CODE}" Scope="perUser">',
-        '    <MajorUpgrade DowngradeErrorMessage="A newer version of GPMI is already installed." />',
+        '    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of GPMI is already installed." />',
         '    <MediaTemplate EmbedCab="yes" />',
         '    <Property Id="WIXUI_INSTALLDIR" Value="APPDIR" />',
         '    <Property Id="APPDIR">',
         f'      <RegistrySearch Id="SearchInstallDir" Root="HKCU" Key="{INSTALL_DIR_REGISTRY_KEY}" Name="{INSTALL_DIR_REGISTRY_VALUE}" Type="raw" />',
         '    </Property>',
+        f'    <Property Id="{INSTALL_DIR_REMOVE_PROPERTY}">',
+        f'      <RegistrySearch Id="SearchInstallDirForUninstall" Root="HKCU" Key="{INSTALL_DIR_REGISTRY_KEY}" Name="{INSTALL_DIR_REGISTRY_VALUE}" Type="raw" />',
+        '    </Property>',
         f'    <WixVariable Id="WixUILicenseRtf" Value="{escape(str((wxs_path.parent / "GPMI-License.rtf").resolve()))}" />',
         '    <ui:WixUI Id="WixUI_InstallDir" />',
+        '    <util:CloseApplication Id="CloseGPMI" Target="GPMI.exe" CloseMessage="yes" ElevatedCloseMessage="yes" RebootPrompt="no" TerminateProcess="1" Timeout="5" />',
         '    <StandardDirectory Id="ProgramMenuFolder">',
         '      <Directory Id="GPMIProgramMenuFolder" Name="GPMI" />',
         '    </StandardDirectory>',
@@ -102,7 +107,7 @@ def write_wxs(stage_dir: Path, wxs_path: Path, version: str) -> None:
         '          <RemoveFile Id="RemoveGPMILog" Name="GPMI Log.txt" On="uninstall" />',
         '          <RemoveFile Id="RemoveGPMIConfig" Name="GPMI Config.json" On="uninstall" />',
         '          <RemoveFile Id="RemoveGPMILocale" Name="GPMI Locale.cfg" On="uninstall" />',
-        '          <util:RemoveFolderEx Id="RemoveAPPDIRTree" On="uninstall" Property="APPDIR" />',
+        f'          <util:RemoveFolderEx Id="RemoveAPPDIRTree" On="uninstall" Property="{INSTALL_DIR_REMOVE_PROPERTY}" />',
     ])
     for directory, directory_id in sorted(
         ((p, d) for p, d in directories.items() if p != stage_dir),

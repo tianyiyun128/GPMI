@@ -116,26 +116,21 @@ Import rules:
 
 ## Building
 
-Build the launcher executable:
-
-```bat
-build.bat 0.1.1.0
-```
-
-Build an MSI package:
+Build the launcher executable and MSI package:
 
 ```bat
 package-gpmi-msi.cmd 0.1.1
 ```
 
-The MSI build requires WiX Toolset with the UI extension installed:
+The packaging script regenerates embedded resources, compiles the launcher with Nuitka, stages the new executable, and writes the MSI.
+
+The MSI build requires WiX Toolset:
 
 ```bat
 dotnet tool install --global wix
-wix extension add WixToolset.UI.wixext
 ```
 
-No C++ compiler, hook DLL, or texture loader DLL is required by GPMI.
+No separate build entrypoint, MSVC setup, C++ hook DLL, or texture loader DLL is required by GPMI.
 
 ## Updates
 
