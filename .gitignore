@@ -8,7 +8,6 @@ Backups/
 Resources/Security/*.key
 Resources/Security/*.der
 Resources/Bin/
-Resources/Packages/Updater/
 Resources/Packages/GPMI/Tools/unit_hook_source/build*/
 Resources/Packages/GPMI/Tools/texture_loader_source/build*
 build/

@@ -137,6 +137,10 @@ wix extension add WixToolset.UI.wixext
 
 No C++ compiler, hook DLL, or texture loader DLL is required by GPMI.
 
+## Updates
+
+Launcher updates are checked from `tianyiyun128/GPMI` GitHub releases and installed through the `GPMI*.msi` release asset. GPMI does not use the old XXMI external updater package.
+
 ## Development Notes
 
 - `src/gpmi_launcher/core/gpmi/mods.py` owns mod scanning, import metadata, selection state, and live manifest generation.

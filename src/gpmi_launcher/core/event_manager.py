@@ -3,7 +3,6 @@ import logging
 from core import path_manager
 from core import application
 from core import package_manager
-from core.packages import updater_package
 from core.packages import launcher_package
 from core.packages import migoto_package
 from core.packages.model_importers import model_importer
@@ -16,7 +15,6 @@ PathManager = path_manager.PathManagerEvents
 Application = application.ApplicationEvents
 PackageManager = package_manager.PackageManagerEvents
 LauncherManager = launcher_package.LauncherManagerEvents
-UpdaterManager = updater_package.UpdaterManagerEvents
 MigotoManager = migoto_package.MigotoManagerEvents
 ModelImporter = model_importer.ModelImporterEvents
 GUI = gui_events.GUIEvents
