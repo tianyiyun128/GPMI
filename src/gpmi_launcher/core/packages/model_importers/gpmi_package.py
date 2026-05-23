@@ -1,12 +1,13 @@
 import logging
-import time
 import shlex
+import shutil
+import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import core.event_manager as Events
-import core.path_manager as Paths
 import core.config_manager as Config
 
 from core.package_manager import PackageMetadata
@@ -23,6 +24,9 @@ from core.gpmi.mods import (
 )
 
 log = logging.getLogger(__name__)
+
+LIVE_BRIDGE_PATCH_NAME = 'GPMILiveBridge.pck'
+LEGACY_LIVE_BRIDGE_PATCH_NAME = 'patch_88.pck'
 
 
 @dataclass
@@ -45,7 +49,6 @@ class GPMIConfig(ModelImporterConfig):
 
     # Generic Godot target/runtime settings used by the GPMI portrait manager.
     custom_game_exe_name: str = ''
-    unit_hook_dll_path: str = ''
     min_width: int = 32
     min_height: int = 32
     ptr_bgra_import: bool = False
@@ -121,7 +124,6 @@ class GPMIPackage(ModelImporterPackage):
 
     def validate_package_files(self):
         ensure_package_profile(Config.Active.Importer.importer_path)
-        Paths.verify_path(Config.Active.Importer.importer_path / 'Runtime')
 
     def create_shortcut(self):
         # Generic Godot targets do not have a stable executable name, so GPMI avoids
@@ -191,21 +193,45 @@ class GPMIPackage(ModelImporterPackage):
         Config.Active.Importer.custom_game_exe_name = game_exe_path.name
         return game_path, game_exe_path
 
-    def _resolve_unit_hook_dll(self) -> Path:
-        configured = str(getattr(Config.Active.Importer, 'unit_hook_dll_path', '') or '').strip().strip('"')
-        if configured:
-            path = Path(configured)
-            if not path.is_absolute():
-                path = Paths.App.Root / path
-        else:
-            path = Config.Active.Importer.importer_path / 'Runtime/GPMIUnitHook.dll'
-        if not path.is_file():
-            raise ValueError(
-                f'GPMIUnitHook.dll not found: {path}\n\n'
-                'Build it first:\n'
-                'Resources\\Packages\\GPMI\\Tools\\unit_hook_source\\build.cmd'
-            )
-        return path
+    def _ensure_live_bridge_patch(self, game_exe_path: Path) -> None:
+        """Check for the Godot-side live bridge patch used by portrait refresh."""
+        game_dir = game_exe_path.resolve().parent
+        mod_dir = game_dir / 'MOD'
+        active_bridge = mod_dir / LIVE_BRIDGE_PATCH_NAME
+        legacy_bridge = mod_dir / LEGACY_LIVE_BRIDGE_PATCH_NAME
+        disabled_dir = game_dir / 'HAModManagerData' / 'MOD_disabled'
+        disabled_bridge = disabled_dir / LIVE_BRIDGE_PATCH_NAME
+        disabled_legacy_bridge = disabled_dir / LEGACY_LIVE_BRIDGE_PATCH_NAME
+        bundled_bridge = Config.Active.Importer.importer_path / 'Runtime' / LIVE_BRIDGE_PATCH_NAME
+
+        if active_bridge.is_file():
+            log.info('GPMI live bridge patch is active: %s', active_bridge)
+            return
+
+        if legacy_bridge.is_file():
+            log.info('Legacy GPMI live bridge patch is active: %s', legacy_bridge)
+            return
+
+        if bundled_bridge.is_file():
+            try:
+                mod_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(bundled_bridge, active_bridge)
+                log.info('Installed GPMI live bridge patch: %s', active_bridge)
+                return
+            except Exception as exc:
+                raise ValueError(f'Failed to install {LIVE_BRIDGE_PATCH_NAME} into {mod_dir}: {exc}') from exc
+
+        if disabled_bridge.is_file() or disabled_legacy_bridge.is_file():
+            log.warning('GPMI live bridge patch exists but is disabled under %s', disabled_dir)
+            return
+
+        log.warning(
+            'GPMI live bridge patch is missing. Portrait selections will write %s, '
+            'but the game will not refresh portraits until %s is installed under %s.',
+            RUNTIME_MANIFEST_FILE,
+            LIVE_BRIDGE_PATCH_NAME,
+            mod_dir,
+        )
 
     def _prepare_runtime_profile(self):
         importer_path = Config.Active.Importer.importer_path
@@ -216,6 +242,7 @@ class GPMIPackage(ModelImporterPackage):
         runtime_manifest = profile_dir / RUNTIME_MANIFEST_FILE
         meta_path = profile_dir / META_FILE
         ensure_game_profile(profile_dir)
+        self._ensure_live_bridge_patch(game_exe_path)
 
         needs_runtime_rebuild = not runtime_manifest.is_file()
         if runtime_manifest.is_file() and meta_path.is_file() and meta_path.stat().st_mtime > runtime_manifest.stat().st_mtime:
@@ -242,30 +269,17 @@ class GPMIPackage(ModelImporterPackage):
 
         game_path, game_exe_path = self.get_game_paths()
         start_exe_path, start_args, work_dir = self.get_start_cmd(game_path)
-        profile_dir = game_profile_dir(game_exe_path)
-        unit_hook_dll = self._resolve_unit_hook_dll()
 
         from core.utils.process_tracker import get_hwnds_for_pid
-        from core.gpmi.win_dll_injector import start_suspended_and_inject_dll
-        import psutil
 
-        Events.Fire(Events.Application.Inject(library_name=unit_hook_dll.name, process_name=game_exe_path.name))
-        pid = start_suspended_and_inject_dll(
-            exe_path=start_exe_path,
-            args=start_args,
-            work_dir=work_dir,
-            dll_path=unit_hook_dll,
-            timeout_seconds=Config.Active.Importer.process_timeout,
-            env_overrides={
-                'GPMI_PROFILE_DIR': str(profile_dir),
-            },
-        )
+        process = subprocess.Popen([str(start_exe_path), *start_args], cwd=work_dir)
+        pid = process.pid
         Config.Active.Importer.runtime_game_pid = pid
 
         Events.Fire(Events.Application.WaitForProcess(process_name=game_exe_path.name))
         deadline = time.time() + max(1, int(Config.Active.Importer.process_timeout))
         while time.time() < deadline:
-            if not psutil.pid_exists(pid):
+            if process.poll() is not None:
                 raise ValueError(f'{game_exe_path.name} exited before its window appeared.')
             if get_hwnds_for_pid(pid=pid, check_visibility=True):
                 time.sleep(0.5)

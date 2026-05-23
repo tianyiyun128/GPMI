@@ -51,12 +51,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if not exist "%RUNTIME_SRC%\GPMIUnitHook.dll" (
-    echo [GPMI][ERROR] Missing runtime DLL:
-    echo [GPMI][ERROR]   "%RUNTIME_SRC%\GPMIUnitHook.dll"
-    exit /b 1
-)
-
 if defined SKIP_BUILD (
     echo [GPMI] Skipping Nuitka build and reusing existing build output.
 ) else (
@@ -66,7 +60,6 @@ if defined SKIP_BUILD (
 
 if exist "%STAGE_DIR%" rmdir /s /q "%STAGE_DIR%"
 mkdir "%BIN_DIR%"
-mkdir "%RUNTIME_DST%"
 
 set "NUITKA_DIST="
 for %%D in ("%BUILD_DIR%\app.dist" "%BUILD_DIR%\GPMI.dist" "%BUILD_DIR%\GPMI Launcher.dist") do (
@@ -86,8 +79,11 @@ if not defined NUITKA_DIST (
 robocopy "%NUITKA_DIST%" "%BIN_DIR%" /E /NFL /NDL /NJH /NJS /NP
 if %ERRORLEVEL% GEQ 8 exit /b %ERRORLEVEL%
 
-robocopy "%RUNTIME_SRC%" "%RUNTIME_DST%" /E /NFL /NDL /NJH /NJS /NP
-if %ERRORLEVEL% GEQ 8 exit /b %ERRORLEVEL%
+if exist "%RUNTIME_SRC%" (
+    mkdir "%RUNTIME_DST%"
+    robocopy "%RUNTIME_SRC%" "%RUNTIME_DST%" /E /NFL /NDL /NJH /NJS /NP
+    if %ERRORLEVEL% GEQ 8 exit /b %ERRORLEVEL%
+)
 
 python scripts\package_msi.py --version "%VERSION%" --stage-dir "%STAGE_DIR%" --output "%MSI_OUT%" --wxs "%WXS%"
 if errorlevel 1 exit /b 1

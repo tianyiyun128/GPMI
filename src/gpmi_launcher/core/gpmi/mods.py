@@ -52,8 +52,7 @@ def _portable_path(path: Path) -> str:
 
 
 def ensure_package_profile(importer_path: Path) -> None:
-    for rel in ["Runtime", "Tools"]:
-        (importer_path / rel).mkdir(parents=True, exist_ok=True)
+    importer_path.mkdir(parents=True, exist_ok=True)
 
 
 def ensure_game_profile(profile_dir: Path) -> None:
@@ -437,7 +436,7 @@ def _rule_for_slot(profile_dir: Path, outfit: dict, slot: str) -> dict:
 
 
 def build_live_portrait_manifest(profile_dir: Path) -> dict:
-    """Write the live portrait manifest consumed by the native unit hook.
+    """Write the live portrait manifest consumed by the Godot live bridge.
 
     The target game calls ImageLoader.unit(type, action, high_resolution).
     For the current target, both Unit and Unit_H slots use the h-suffixed
