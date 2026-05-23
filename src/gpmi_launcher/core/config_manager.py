@@ -119,13 +119,9 @@ class AppConfig:
         cfg = {}
         if config_path.is_file():
             cfg.update(json.loads(Paths.App.read_text(config_path)))
-        # Legacy XXMI/GPMI builds stored local signing state here. GPMI no longer
-        # generates per-machine keys, so ignore the old node when loading config.
-        cfg.pop('Security', None)
         for key, value in from_dict(data_class=AppConfig, data=cfg).__dict__.items():
             if hasattr(self, key):
                 setattr(self, key, value)
-        self.sanitize()
         if self.Launcher.gui_theme:
             self.active_theme = self.Launcher.gui_theme
 
@@ -146,60 +142,10 @@ class AppConfig:
     def save(self):
         Paths.App.write_file(self.config_path, Config.as_json())
 
-    def sanitize(self):
-        self.Launcher.active_importer = 'GPMI'
-        self.Launcher.enabled_importers = ['GPMI']
-        self.Importers.GPMI.Importer.importer_folder = ''
-        self.Packages.packages = {
-            package_name: package_config
-            for package_name, package_config in self.Packages.packages.items()
-            if package_name in {'Launcher', 'GPMI'}
-        }
-
-    def run_patch_195(self):
-        pass
-
-    def run_patch_201(self):
-        pass
-
-    def run_patch_216(self):
-        pass
-
-    def run_patch_219(self):
-        try:
-            importer = self.Importers.__dict__.get('GPMI')
-            if importer is not None:
-                importer.Migoto.enforce_rendering = True
-        except Exception:
-            pass
-
     def upgrade(self, old_version, new_version):
-        # Save config to file and exit early if old version is empty (aka fresh installation)
-        if not old_version:
-            log.debug(f'Saving new config...')
-            self.Launcher.config_version = new_version
-            self.save()
-            return
-
-        # Apply patches
-        patches = {
-            '1.9.5': self.run_patch_195,
-            '2.0.1': self.run_patch_201,
-            '2.1.6': self.run_patch_216,
-            '2.1.9': self.run_patch_219,
-        }
-        applied_patches = []
-        for patch_version, patch_func in patches.items():
-            if old_version < patch_version:
-                log.debug(f'Upgrading launcher config from {old_version} to {patch_version}...')
-                patch_func()
-                applied_patches.append(patch_version)
-
-        # Save patched config to file
-        if len(applied_patches) > 0:
-            log.debug(f'Saving patched config...')
-            self.Launcher.config_version = new_version
-            self.save()
+        log.debug(f'Updating launcher config version from {old_version or "fresh"} to {new_version}...')
+        self.Launcher.config_version = new_version
+        self.save()
 
 Config: AppConfig = AppConfig()
 

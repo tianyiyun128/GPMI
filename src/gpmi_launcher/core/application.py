@@ -279,7 +279,7 @@ class Application:
         if self.args.create_shortcut:
             Events.Fire(Events.LauncherManager.CreateShortcut())
 
-        # Get active MI from args, use one from config or fallback to XXMI homepage
+        # GPMI-only build: resolve the target executable, then load GPMI.
         active_importer = self.get_active_importer()
 
         # Load packages of active importer and skip update for fast start
@@ -494,7 +494,7 @@ class Application:
 
     def validate_importer_name(self, importer_name: str) -> str:
         importer_name = importer_name.upper()
-        if importer_name != 'XXMI' and importer_name not in Config.Importers.__dict__.keys():
+        if importer_name != 'GPMI':
             raise ValueError(L('error_unknown_model_importer', 'Unknown model importer {importer}!').format(importer=importer_name))
         return importer_name
 
@@ -521,8 +521,6 @@ class Application:
         """).format(path=path))
 
     def get_active_importer(self) -> str:
-        active_importer = None
-
         if not self.args.xxmi and self.args.exe_path:
             exe_path = Path(self.args.exe_path)
 
@@ -535,27 +533,14 @@ class Application:
             Config.Importers.__dict__[importer_name].Importer.custom_game_exe_name = game_exe_path.name
 
         if self.args.xxmi:
-            # Active model importer override is supplied via command line arg `--xxmi`
             try:
-                active_importer = self.validate_importer_name(self.args.xxmi)
+                self.validate_importer_name(self.args.xxmi)
             except Exception:
                 Events.Fire(Events.Application.ShowWarning(
                     message=L('error_unknown_model_importer_arg', 'Unknown model importer supplied as command line arg `--xxmi={arg_xxmi}`!').format(arg_xxmi=self.args.xxmi))
                 )
 
-        elif Config.Launcher.active_importer:
-            # Active model importer override is supplied via `active_importer` setting
-            try:
-                active_importer = self.validate_importer_name(Config.Launcher.active_importer)
-            except Exception:
-                Events.Fire(Events.Application.ShowWarning(
-                    message=L('error_unknown_model_importer_setting', 'Unknown model importer `{importer}` supplied with `active_importer` setting!').format(importer=Config.Launcher.active_importer))
-                )
-
-        if active_importer is None:
-            active_importer = 'GPMI'
-
-        return active_importer
+        return 'GPMI'
 
     def auto_update(self):
         # Exit early if current active model importer is not installed
@@ -567,8 +552,6 @@ class Application:
         # Query GitHub for updates and skip installation, force query and lock GUI if --update argument is supplied
         try:
             self.package_manager.update_packages(no_install=True, force=self.args.update, silent=not self.args.update)
-            if Config.Launcher.active_importer == 'XXMI' and not self.args.update:
-                return
         except Exception as e:
             if self.args.update:
                 Events.Fire(Events.Application.ShowWarning(
@@ -603,10 +586,7 @@ class Application:
             self.package_manager.unload_package(Config.Launcher.active_importer)
         # Mark requested MI as active
         Config.Launcher.active_importer = importer_id
-        # Exit early if requested MI is `XXMI` aka dummy id used for homepage
-        if importer_id == 'XXMI':
-            return
-        # Add MI to the list of enabled one if it's not in it already (i.e. if user manually edited settings file)
+        # Add MI to the list of enabled one if it's not in it already.
         if importer_id not in Config.Launcher.enabled_importers:
             Config.Launcher.enabled_importers.append(importer_id)
         # Load MI package
