@@ -87,10 +87,10 @@ def write_wxs(stage_dir: Path, wxs_path: Path, version: str) -> None:
         component_refs.append("CmpShortcuts")
         lines.extend([
             f'        <Component Id="CmpShortcuts" Guid="{SHORTCUTS_COMPONENT_GUID}">',
-            f'          <Shortcut Id="AppInstallDirShortcut" Name="GPMI" Description="Launch GPMI" Target="[#{launcher_file_id}]" WorkingDirectory="{launcher_working_dir_id}" />',
-            f'          <Shortcut Id="AppStartMenuShortcut" Directory="GPMIProgramMenuFolder" Name="GPMI" Description="Launch GPMI" Target="[#{launcher_file_id}]" WorkingDirectory="{launcher_working_dir_id}" />',
-            '          <Shortcut Id="UninstallInstallDirShortcut" Name="Uninstall GPMI" Description="Uninstall GPMI" Target="[SystemFolder]msiexec.exe" Arguments="/x [ProductCode]" />',
-            '          <Shortcut Id="UninstallStartMenuShortcut" Directory="GPMIProgramMenuFolder" Name="Uninstall GPMI" Description="Uninstall GPMI" Target="[SystemFolder]msiexec.exe" Arguments="/x [ProductCode]" />',
+            f'          <Shortcut Id="AppInstallDirShortcut" Name="GPMI.exe" Description="Launch GPMI" Target="[#{launcher_file_id}]" WorkingDirectory="{launcher_working_dir_id}" />',
+            f'          <Shortcut Id="AppStartMenuShortcut" Directory="GPMIProgramMenuFolder" Name="GPMI.exe" Description="Launch GPMI" Target="[#{launcher_file_id}]" WorkingDirectory="{launcher_working_dir_id}" />',
+            '          <Shortcut Id="UninstallInstallDirShortcut" Name="Uninstall GPMI.exe" Description="Uninstall GPMI" Target="[SystemFolder]msiexec.exe" Arguments="/x [ProductCode]" />',
+            '          <Shortcut Id="UninstallStartMenuShortcut" Directory="GPMIProgramMenuFolder" Name="Uninstall GPMI.exe" Description="Uninstall GPMI" Target="[SystemFolder]msiexec.exe" Arguments="/x [ProductCode]" />',
             '          <RemoveFolder Id="RemoveGPMIProgramMenuFolder" Directory="GPMIProgramMenuFolder" On="uninstall" />',
             f'          <RegistryValue Root="HKCU" Key="{INSTALL_DIR_REGISTRY_KEY}" Name="Shortcuts" Value="1" Type="integer" KeyPath="yes" />',
             '        </Component>',
