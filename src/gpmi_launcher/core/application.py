@@ -628,7 +628,6 @@ class Application:
         Config.Active = getattr(Config.Importers, importer_id)
         self.package_manager.load_package(importer_id)
         self.package_manager.notify_package_versions()
-        Config.ConfigSecurity.validate_config()
         Events.Fire(Events.Application.ConfigUpdate())
         if update:
             self.auto_update()

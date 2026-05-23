@@ -192,8 +192,8 @@ class Paths:
                 ).format(root_path=root_path, path=path))
 
     def verify(self):
-        for path in self.__dict__.values():
-            verify_path(path)
+        verify_path(self.Root)
+        verify_path(self.Backups)
 
     @staticmethod
     def is_subpath(child, parent):

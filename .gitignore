@@ -5,16 +5,10 @@ __pycache__/
 *.pyo
 *.log
 Backups/
-Resources/Security/*.key
-Resources/Security/*.der
-Resources/Bin/
 build/
 dist/
 *.spec
 src/gpmi_launcher/core/resources_bundle.py
-XXMI Launcher Log.txt
-XXMI Launcher Log.txt.bak
-XXMI Launcher Config.json
 GPMI Log.txt
 GPMI Log.txt.bak
 GPMI Config.json
