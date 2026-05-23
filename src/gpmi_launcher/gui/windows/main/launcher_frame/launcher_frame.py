@@ -1,3 +1,5 @@
+import webbrowser
+
 import core.event_manager as Events
 import core.config_manager as Config
 
@@ -39,7 +41,6 @@ class LauncherFrame(UIFrame):
 
         # Package versions
         self.put(LauncherVersionText(self))
-        self.put(ImporterVersionText(self))
 
         # Settings Frame
         self.put(SettingsFrame(self, self.canvas))
@@ -419,17 +420,58 @@ class PackageVersionText(UIImageButton):
             fill='#999999',
             activefill='white',
             anchor='nw',
-            command=lambda: None,
+            command=self.open_release_link,
         )
         defaults.update(kwargs)
         super().__init__(**defaults)
         self.stage = None
         self.package_name = ''
+        self.set_tooltip(self.get_tooltip, delay=0)
         self.subscribe(Events.GUI.LauncherFrame.StageUpdate, self.handle_stage_update)
 
     def handle_stage_update(self, event):
         self.stage = event.stage
         self.show(self.stage == Stage.Ready and Config.Launcher.active_importer != 'XXMI')
+
+    def open_release_link(self):
+        package = Events.Call(Events.PackageManager.GetPackage(self.package_name))
+        metadata = package.metadata
+        if metadata.github_repo_owner and metadata.github_repo_name:
+            webbrowser.open(f'https://github.com/{metadata.github_repo_owner}/{metadata.github_repo_name}/releases')
+
+    def get_tooltip(self):
+        package = Events.Call(Events.PackageManager.GetPackage(self.package_name))
+        display_name = 'GPMI' if package.metadata.package_name == 'Launcher' else package.metadata.package_name
+        version = package.installed_version or package.cfg.latest_version
+        release_notes = package.cfg.deployed_release_notes or package.cfg.latest_release_notes
+        if release_notes:
+            package_release_notes = L('gpmi_launcher_release_notes_up_to_date', """
+                # What's new in {package_name} v{new_package_version}:
+                {installed_release_notes}
+            """)
+        else:
+            package_release_notes = L('gpmi_launcher_release_notes_empty', """
+                No release notes are available for this build.
+            """)
+
+        actions_tooltip = L('gpmi_launcher_release_notes_open_releases', """
+            <font color="#3366ff">*<u>Left-Click</u> to open {package_name} GitHub releases for full changelog.*</font>
+        """)
+
+        txt = L('gpmi_launcher_release_notes_tooltip', """
+            {package_release_notes}
+            
+            {actions_tooltip}
+        """).format(
+            package_release_notes=package_release_notes,
+            actions_tooltip=actions_tooltip
+        )
+
+        return txt.format(
+            package_name=display_name,
+            new_package_version=version,
+            installed_release_notes=release_notes,
+        )
 
 
 class LauncherVersionText(PackageVersionText):
@@ -445,48 +487,5 @@ class LauncherVersionText(PackageVersionText):
         self.show(self.stage == Stage.Ready)
 
     def handle_version_notification(self, event):
-        self.set_text(f'GPMI LAUNCHER {event.package_states["Launcher"].installed_version}')
-
-
-class XXMIVersionText(PackageVersionText):
-    def __init__(self, master):
-        super().__init__(x=160,
-                         y=680,
-                         master=master)
-        self.subscribe(Events.Application.LoadImporter, self.handle_load_importer)
-        self.subscribe(Events.PackageManager.VersionNotification, self.handle_version_notification)
-        self.package_name = 'XXMI'
-
-    def handle_load_importer(self, event):
-        self.show(self.stage == Stage.Ready and event.importer_id != 'XXMI')
-
-    def handle_version_notification(self, event):
-        package_state = event.package_states.get('XXMI', None)
-        if package_state is None:
-            return
-        if package_state.installed_version:
-            self.set_text(f'XXMI {package_state.installed_version}')
-        else:
-            self.set_text(f'XXMI N/A')
-
-
-class ImporterVersionText(PackageVersionText):
-    def __init__(self, master):
-        super().__init__(x=210,
-                         y=680,
-                         master=master)
-        self.subscribe(Events.Application.LoadImporter, self.handle_load_importer)
-        self.subscribe(Events.PackageManager.VersionNotification, self.handle_version_notification)
-
-    def handle_load_importer(self, event):
-        self.show(self.stage == Stage.Ready and event.importer_id != 'XXMI')
-
-    def handle_version_notification(self, event):
-        package_state = event.package_states.get(Config.Launcher.active_importer, None)
-        if package_state is None:
-            return
-        package_name = Config.Launcher.active_importer
-        if package_state.installed_version:
-            self.set_text(f'{package_name} {package_state.installed_version}')
-        else:
-            self.set_text(f'{package_name} N/A')
+        version = event.package_states["Launcher"].installed_version
+        self.set_text(f'GPMI {version}')

@@ -11,5 +11,6 @@ src/gpmi_launcher/core/resources_bundle.py
 GPMI Log.txt
 GPMI Log.txt.bak
 GPMI Config.json
+GPMI Locale.cfg
 nuitka-crash-report.xml
 package-gpmi-exe.ps1

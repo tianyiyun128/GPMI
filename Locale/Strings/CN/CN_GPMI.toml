@@ -86,6 +86,22 @@ loc = "启动"
 src = "Install"
 loc = "安装"
 
+[gpmi_launcher_release_notes_up_to_date]
+src = "# What's new in {package_name} v{new_package_version}:\n{installed_release_notes}"
+loc = "# {package_name} v{new_package_version} 更新内容：\n{installed_release_notes}"
+
+[gpmi_launcher_release_notes_empty]
+src = "No release notes are available for this build."
+loc = "这个版本没有可用的更新说明。"
+
+[gpmi_launcher_release_notes_open_releases]
+src = "<font color=\"#3366ff\">*<u>Left-Click</u> to open {package_name} GitHub releases for full changelog.*</font>"
+loc = "<font color=\"#3366ff\">*<u>左键点击</u>打开 {package_name} 的 GitHub releases 查看完整更新记录。*</font>"
+
+[gpmi_launcher_release_notes_tooltip]
+src = "{package_release_notes}\n\n{actions_tooltip}"
+loc = "{package_release_notes}\n\n{actions_tooltip}"
+
 [launcher_select_games_text]
 src = "Select Games To Mod:"
 loc = "选择要加载 MOD 的游戏："
