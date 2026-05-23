@@ -37,15 +37,24 @@ if errorlevel 1 (
     echo [GPMI][ERROR] WiX Toolset was not found.
     echo [GPMI][ERROR] Install WiX v4+ first, for example:
     echo [GPMI][ERROR]   dotnet tool install --global wix
-    echo [GPMI][ERROR]   wix extension add WixToolset.UI.wixext
     exit /b 1
 )
 
 wix extension list 2>nul | findstr /I /C:"WixToolset.UI.wixext" >nul
 if errorlevel 1 (
-    echo [GPMI][ERROR] WiX UI extension was not found.
-    echo [GPMI][ERROR] Install it first:
-    echo [GPMI][ERROR]   wix extension add WixToolset.UI.wixext
+    echo [GPMI] WiX UI extension was not found. Installing it now...
+    wix extension add WixToolset.UI.wixext
+    if errorlevel 1 (
+        echo [GPMI][ERROR] Failed to install WiX UI extension.
+        echo [GPMI][ERROR] Run this manually, then retry:
+        echo [GPMI][ERROR]   wix extension add WixToolset.UI.wixext
+        exit /b 1
+    )
+)
+
+wix extension list 2>nul | findstr /I /C:"WixToolset.UI.wixext" >nul
+if errorlevel 1 (
+    echo [GPMI][ERROR] WiX UI extension is still not available after installation.
     exit /b 1
 )
 
