@@ -99,6 +99,16 @@ def write_wxs(stage_dir: Path, wxs_path: Path, version: str) -> None:
     component_refs.append("CmpInstallDirRegistry")
     lines.extend([
         f'        <Component Id="CmpInstallDirRegistry" Guid="{INSTALL_DIR_REGISTRY_COMPONENT_GUID}">',
+        '          <RemoveFile Id="RemoveGPMILog" Name="GPMI Log.txt" On="uninstall" />',
+    ])
+    for directory, directory_id in sorted(
+        ((p, d) for p, d in directories.items() if p != stage_dir),
+        key=lambda item: len(item[0].parts),
+        reverse=True,
+    ):
+        lines.append(f'          <RemoveFolder Id="Remove{directory_id}" Directory="{directory_id}" On="uninstall" />')
+    lines.extend([
+        '          <RemoveFolder Id="RemoveAPPDIR" Directory="APPDIR" On="uninstall" />',
         f'          <RegistryValue Root="HKCU" Key="{INSTALL_DIR_REGISTRY_KEY}" Name="{INSTALL_DIR_REGISTRY_VALUE}" Value="[APPDIR]" Type="string" KeyPath="yes" />',
         '        </Component>',
     ])
