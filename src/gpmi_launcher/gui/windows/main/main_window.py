@@ -183,7 +183,7 @@ class MainWindow(UIMainWindow):
             self.portrait_hotkey_polling = False
             return
 
-        key_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(0x50) & 0x8000)
+        key_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(0x51) & 0x8000)
         if key_pressed and not self.portrait_hotkey_pressed:
             self.toggle_portrait_overlay()
         self.portrait_hotkey_pressed = key_pressed
