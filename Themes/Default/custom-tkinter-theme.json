@@ -155,7 +155,7 @@
   },
   "SettingsTabLabel": {
     "text_color": "white",
-    "font": ["Microsoft YaHei", 20]
+    "font": ["SimHei", 20]
   },
   "SelectGameText": {
   },
@@ -179,7 +179,7 @@
     "fg_color": ["#666666", "#1f2024"],
     "text_color_hovered": ["#888888", "#ffffff"],
     "text_color": ["#ffffff", "#999999"],
-    "font": ["Microsoft YaHei", 16]
+    "font": ["SimSun", 16]
   },
   "CTkFont": {
     "macOS": {
@@ -188,7 +188,7 @@
       "weight": "normal"
     },
     "Windows": {
-      "family": "Roboto",
+      "family": "SimSun",
       "size": 15,
       "weight": "normal"
     },

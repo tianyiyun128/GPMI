@@ -177,7 +177,7 @@ class UnsafeModeText(UIText):
         super().__init__(x=640,
                          y=25,
                          text=L('top_bar_unsafe_mode_text', 'Unsafe Mode'),
-                         font=('Asap', 20),
+                         font=('SimSun', 20),
                          fill='#ff2929',
                          activefill='#ff4040',
                          anchor='n',

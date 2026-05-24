@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import core.event_manager as Events
 import core.config_manager as Config
 
+from core.locale_manager import L
 from core.package_manager import PackageMetadata
 from core.packages.migoto_package import MigotoManagerConfig
 from core.packages.model_importers.model_importer import ModelImporterConfig, ModelImporterPackage
@@ -148,28 +149,47 @@ class GPMIPackage(ModelImporterPackage):
     def validate_game_path(self, game_folder) -> Path:
         configured_path = Path(str(game_folder or '').strip().strip('"'))
         if not str(configured_path):
-            raise ValueError('Game executable is not configured. Select the exact Godot game .exe first.')
+            raise ValueError(L(
+                'gpmi_error_game_exe_not_configured',
+                'Game executable is not configured. Select the exact Godot game .exe first.'
+            ))
         if configured_path.suffix.lower() != '.exe':
-            raise ValueError(
+            raise ValueError(L(
+                'gpmi_error_game_exe_required',
                 'GPMI requires an exact game executable path, not a folder. '
                 'Click Browse and select the Godot game .exe.'
-            )
+            ))
         if not configured_path.is_absolute():
-            raise ValueError(f'Game executable path must be absolute: {configured_path}')
+            raise ValueError(L(
+                'gpmi_error_game_exe_path_absolute',
+                'Game executable path must be absolute: {path}'
+            ).format(path=configured_path))
         if not configured_path.is_file():
-            raise ValueError(f'Game executable not found: {configured_path}')
+            raise ValueError(L(
+                'gpmi_error_game_exe_not_found',
+                'Game executable not found: {path}'
+            ).format(path=configured_path))
         return configured_path.parent
 
     def validate_game_exe_path(self, game_path: Path) -> Path:
         explicit_exe = self._configured_game_exe_path()
         if explicit_exe is None:
-            raise ValueError('Game executable is not configured. Select the exact Godot game .exe first.')
+            raise ValueError(L(
+                'gpmi_error_game_exe_not_configured',
+                'Game executable is not configured. Select the exact Godot game .exe first.'
+            ))
         if not explicit_exe.is_absolute():
             explicit_exe = game_path / explicit_exe
         if explicit_exe.suffix.lower() != '.exe':
-            raise ValueError(f'Configured game path is not an .exe: {explicit_exe}')
+            raise ValueError(L(
+                'gpmi_error_configured_path_not_exe',
+                'Configured game path is not an .exe: {path}'
+            ).format(path=explicit_exe))
         if not explicit_exe.is_file():
-            raise ValueError(f'Selected game executable not found: {explicit_exe}')
+            raise ValueError(L(
+                'gpmi_error_selected_game_exe_not_found',
+                'Selected game executable not found: {path}'
+            ).format(path=explicit_exe))
         return explicit_exe
 
     def detect_game_paths(self, supress_errors=False):

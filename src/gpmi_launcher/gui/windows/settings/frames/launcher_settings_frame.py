@@ -171,7 +171,7 @@ class StartBehaviorLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_start_behavior_label', 'Start Behavior:'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             fg_color='transparent',
             master=master)
 
@@ -192,7 +192,7 @@ class UpdatePolicyLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_update_policy_label', 'Update Policy:'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             fg_color='transparent',
             master=master)
 
@@ -216,7 +216,7 @@ class UpdateChannelLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_update_channel_label', 'Channel:'),
-            font=('Microsoft YaHei', 14),
+            font=('SimSun', 14),
             fg_color='transparent',
             master=master)
 
@@ -228,8 +228,8 @@ class UpdateChannelOptionMenu(UIOptionMenu):
             variable=Vars.Launcher.update_channel,
             width=100,
             height=36,
-            font=('Arial', 14),
-            dropdown_font=('Arial', 14),
+            font=('SimSun', 14),
+            dropdown_font=('SimSun', 14),
             master=master)
         self.set_tooltip(L('launcher_settings_update_channel_option_menu_tooltip', """
             **Auto**: Detect update installation method automatically.
@@ -257,7 +257,7 @@ class SecurityLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('advanced_settings_security_label', 'Security:'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             fg_color='transparent',
             master=master)
 
@@ -266,7 +266,7 @@ class ThemeLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_theme_label', 'UI Theme:'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             fg_color='transparent',
             master=master)
 
@@ -278,8 +278,8 @@ class LauncherThemeOptionMenu(UIOptionMenu):
             variable=Vars.Launcher.gui_theme,
             width=150,
             height=36,
-            font=('Arial', 14),
-            dropdown_font=('Arial', 14),
+            font=('SimSun', 14),
+            dropdown_font=('SimSun', 14),
             command=self.handle_theme_change,
             master=master)
         self.set_tooltip(L('launcher_settings_theme_option_menu_tooltip', """
@@ -332,7 +332,7 @@ class ConnectionLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_connection_label', 'Connection:'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             fg_color='transparent',
             master=master)
 
@@ -341,7 +341,7 @@ class GitHubTokenLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_github_token_label', 'GitHub Token:'),
-            font=('Microsoft YaHei', 14),
+            font=('SimSun', 14),
             fg_color='transparent',
             master=master)
 
@@ -353,7 +353,7 @@ class GitHubTokenEntry(UIEntry):
             width=260,
             height=32,
             border_width=0,
-            font=('Arial', 14),
+            font=('SimSun', 14),
             master=master)
         self.set_tooltip(L('launcher_settings_github_token_entry_tooltip', """
             Your **Personal Access Token** on **GitHub** (i.e. `ghp_f7gy3A4eQ97jfy2983mfZu2Hy93yf2P3d798`).
@@ -375,7 +375,7 @@ class GitHubTokenButton(UIButton):
             padx=6,
             height=32,
             border_width=0,
-            font=('Roboto', 14),
+            font=('SimSun', 14),
             fg_color=fg_color,
             hover_color=fg_color,
             text_color=['#000000', '#aaaaaa'],
@@ -402,7 +402,7 @@ class ProxyEnableCheckbox(UICheckbox):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_proxy_enable_checkbox', 'Use Proxy:'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             variable=Vars.Launcher.proxy.enable,
             master=master)
         self.set_tooltip(L('launcher_settings_proxy_enable_checkbox_tooltip', """
@@ -416,7 +416,7 @@ class ProxyTypeLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_proxy_type_label', 'Type:'),
-            font=('Microsoft YaHei', 14),
+            font=('SimSun', 14),
             fg_color='transparent',
             master=master)
 
@@ -436,8 +436,8 @@ class ProxyTypeOptionMenu(UIOptionMenu):
             variable=Vars.Launcher.proxy.type,
             width=140,
             height=36,
-            font=('Arial', 14),
-            dropdown_font=('Arial', 14),
+            font=('SimSun', 14),
+            dropdown_font=('SimSun', 14),
             master=master)
         self.set_tooltip(L('launcher_settings_proxy_type_option_menu_tooltip', """
             **HTTPS**: Good old proxy protocol. Offers best security.
@@ -484,7 +484,7 @@ class ProxyHostLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_proxy_host_label', 'Host:'),
-            font=('Microsoft YaHei', 14),
+            font=('SimSun', 14),
             fg_color='transparent',
             master=master)
 
@@ -495,7 +495,7 @@ class ProxyHostEntry(UIEntry):
             textvariable=Vars.Launcher.proxy.host,
             width=130,
             height=36,
-            font=('Arial', 14),
+            font=('SimSun', 14),
             master=master)
         self.set_tooltip(L('launcher_settings_proxy_host_entry_tooltip',
             'Proxy IP address (i.e. `123.12.1.231`) or domain name (i.e. `proxyprovider.com`).'
@@ -530,7 +530,7 @@ class ProxyPortLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_proxy_port_label', 'Port:'),
-            font=('Microsoft YaHei', 14),
+            font=('SimSun', 14),
             fg_color='transparent',
             master=master)
 
@@ -541,7 +541,7 @@ class ProxyPortEntry(UIEntry):
             textvariable=Vars.Launcher.proxy.port,
             width=55,
             height=36,
-            font=('Arial', 14),
+            font=('SimSun', 14),
             master=master)
         self.set_tooltip(L('launcher_settings_proxy_port_entry_tooltip', 'Proxy port (i.e. `1080`).'))
 
@@ -578,7 +578,7 @@ class ProxyUserLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_proxy_user_label', 'User:'),
-            font=('Microsoft YaHei', 14),
+            font=('SimSun', 14),
             fg_color='transparent',
             master=master)
 
@@ -589,7 +589,7 @@ class ProxyUserEntry(UIEntry):
             textvariable=Vars.Launcher.proxy.user,
             width=130,
             height=36,
-            font=('Arial', 14),
+            font=('SimSun', 14),
             master=master)
         self.set_tooltip(L('launcher_settings_proxy_user_entry_tooltip', 'User name provided by your proxy service.'))
 
@@ -598,7 +598,7 @@ class ProxyPasswordLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_proxy_password_label', 'Password:'),
-            font=('Microsoft YaHei', 14),
+            font=('SimSun', 14),
             fg_color='transparent',
             master=master)
 
@@ -609,6 +609,6 @@ class ProxyPasswordEntry(UIEntry):
             textvariable=Vars.Launcher.proxy.password,
             width=250,
             height=36,
-            font=('Arial', 14),
+            font=('SimSun', 14),
             master=master)
         self.set_tooltip(L('launcher_settings_proxy_password_entry_tooltip', 'Password provided by your proxy service.'))

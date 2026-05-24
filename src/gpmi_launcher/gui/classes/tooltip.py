@@ -34,12 +34,12 @@ class UIToolTip:
             style: str = dedent("""
                 <style>
                     html { background-color: #fafafa;}
-                    body { font-size: 14px; background-color: #fafafa; }
-                    p { font-family: Asap; margin: 5px;}
-                    ul { margin: 10px 5px;}
-                    li { margin: 10px 5px;}
-                    h1 { font-size: 18px; margin: 10px 5px;}
-                    h2 { font-size: 16px; margin: 10px 5px;}
+                    body { font-family: SimSun; font-size: 14px; background-color: #fafafa; }
+                    p { font-family: SimSun; margin: 5px;}
+                    ul { font-family: SimSun; margin: 10px 5px;}
+                    li { font-family: SimSun; margin: 10px 5px;}
+                    h1 { font-family: SimHei; font-size: 18px; margin: 10px 5px;}
+                    h2 { font-family: SimHei; font-size: 16px; margin: 10px 5px;}
                 </style>
             """),
     ):

@@ -101,7 +101,7 @@ class SettingsLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('settings_title', 'Settings'),
-            font=('Microsoft YaHei', 20),
+            font=('SimHei', 20),
             fg_color='transparent',
             text_color='#888888',
             master=master)

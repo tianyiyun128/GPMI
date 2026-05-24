@@ -545,7 +545,7 @@ class UIImageButton(UICanvasWidget, CTkBaseClass):
                  button_disabled_brightness: float = 1,
                  # Text
                  text: str = None,
-                 font: str = 'Roboto 14',
+                 font: str = 'SimSun 14',
                  justify: str = 'left',
                  text_x_offset: int = 0,
                  text_y_offset: int = 0,
@@ -1175,7 +1175,7 @@ class UIEntry(CTkEntry, UIWidget):
         self.bind("<Return>", self.handle_return)
 
         self.context_menu = Menu(self, tearoff=0)
-        self.context_menu.config(font=self._apply_font_scaling(('Asap', 14)))
+        self.context_menu.config(font=self._apply_font_scaling(('SimSun', 14)))
         self.context_menu.add_command(label="Cut")
         self.context_menu.add_command(label="Copy")
         self.context_menu.add_command(label="Paste")
@@ -1764,7 +1764,7 @@ class UITextbox(CTkTextbox, UIWidget):
         CTkTextbox.__init__(self, master, **kwargs)
 
         self.context_menu = Menu(self, tearoff=0)
-        self.context_menu.config(font=self._apply_font_scaling(('Asap', 14)))
+        self.context_menu.config(font=self._apply_font_scaling(('SimSun', 14)))
         self.context_menu.add_command(label="Cut")
         self.context_menu.add_command(label="Copy")
         self.context_menu.add_command(label="Paste")

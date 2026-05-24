@@ -14,7 +14,7 @@ import core.config_manager as Config
 from core.embedded_resources import EmbeddedResources
 from core.locale_manager import L
 
-from customtkinter import CTkButton, CTkFrame, CTkLabel, CTkToplevel, set_appearance_mode
+from customtkinter import CTkButton, CTkFrame, CTkLabel, set_appearance_mode
 from customtkinter.windows.widgets.theme import ThemeManager
 
 from gui.classes.windows import UIMainWindow, limit_scaling
@@ -359,45 +359,46 @@ class MainWindow(UIMainWindow):
         Events.Fire(Events.Application.Ready())
         super().close()
 
-    def show_startup_language_dialog(self, locales, active_locale_name: str = '') -> str:
+    def show_startup_language_dialog(self, locales) -> str:
         if not self.exists:
-            return active_locale_name
+            return ''
 
         locales = list(locales or [])
         if not locales:
-            return active_locale_name
+            return ''
 
-        locale_names = {locale.name for locale in locales}
-        detected_locale_name = active_locale_name if active_locale_name in locale_names else locales[0].name
-        result = {'locale_name': detected_locale_name}
-
-        dialog = CTkToplevel(self)
-        dialog.withdraw()
-        dialog.overrideredirect(True)
-        dialog.transient(self)
-        dialog.configure(fg_color='#1e2024')
+        result = {'locale_name': ''}
 
         dialog_width = 560
         dialog_height = min(420, 188 + (len(locales) * 56))
 
-        self.update_idletasks()
-        root_width = max(self.winfo_width(), self.cfg.width)
-        root_height = max(self.winfo_height(), self.cfg.height)
-        root_x = self.winfo_rootx()
-        root_y = self.winfo_rooty()
-        x = root_x + max((root_width - dialog_width) // 2, 0)
-        y = root_y + max((root_height - dialog_height) // 2, 0)
-        dialog.geometry(f'{dialog_width}x{dialog_height}+{x}+{y}')
+        overlay = CTkFrame(self, fg_color='#102037', corner_radius=0)
+        overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        overlay.lift()
 
         container = CTkFrame(
-            dialog,
+            overlay,
+            width=dialog_width,
+            height=dialog_height,
             fg_color='#1e2024',
             border_color='#666b74',
             border_width=2,
             corner_radius=22,
         )
-        container.pack(fill='both', expand=True)
+        container.place(relx=0.5, rely=0.5, anchor='center')
+        container.grid_propagate(False)
         container.grid_columnconfigure(0, weight=1)
+        container.grid_columnconfigure(1, weight=0)
+
+        def choose(locale_name: str):
+            result['locale_name'] = locale_name
+            if overlay.winfo_exists():
+                overlay.destroy()
+
+        def close_launcher():
+            if overlay.winfo_exists():
+                overlay.destroy()
+            self.close()
 
         close_button = CTkButton(
             container,
@@ -408,75 +409,135 @@ class MainWindow(UIMainWindow):
             fg_color='transparent',
             hover_color='#343842',
             text_color='#f1f3f5',
-            font=('Microsoft YaHei UI', 28, 'bold'),
-            command=lambda: choose(detected_locale_name),
+            font=('SimHei', 28, 'bold'),
+            command=close_launcher,
         )
-        close_button.place(relx=1.0, x=-24, y=18, anchor='ne')
+        close_button.grid(row=0, column=1, sticky='ne', padx=(8, 22), pady=(20, 0))
 
         title = CTkLabel(
             container,
             text='Language / 语言',
             anchor='w',
             text_color='#ffffff',
-            font=('Microsoft YaHei UI', 30, 'bold'),
+            font=('SimHei', 30, 'bold'),
         )
-        title.grid(row=0, column=0, sticky='ew', padx=(34, 70), pady=(28, 4))
+        title.grid(row=0, column=0, sticky='ew', padx=(34, 8), pady=(28, 4))
 
         subtitle = CTkLabel(
             container,
-            text='Choose the launcher language. / 请选择启动器语言。',
+            text='',
             anchor='w',
             text_color='#f2f4f8',
-            font=('Microsoft YaHei UI', 18),
+            font=('SimSun', 18),
         )
-        subtitle.grid(row=1, column=0, sticky='ew', padx=34, pady=(0, 18))
+        subtitle.grid(row=1, column=0, columnspan=2, sticky='ew', padx=34, pady=(0, 18))
 
         button_frame = CTkFrame(container, fg_color='transparent')
-        button_frame.grid(row=2, column=0, sticky='nsew', padx=34, pady=(0, 28))
+        button_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=34, pady=(0, 28))
         button_frame.grid_columnconfigure(0, weight=1)
 
-        def close_dialog():
-            try:
-                dialog.grab_release()
-            except Exception:
-                pass
-            if dialog.winfo_exists():
-                dialog.destroy()
-
-        def choose(locale_name: str):
-            result['locale_name'] = locale_name
-            close_dialog()
-
         for row, locale in enumerate(locales):
-            is_detected = locale.name == detected_locale_name
             label = f'{locale.display_name} ({locale.name})'
-            if is_detected:
-                label = f'{label}    Detected / 检测'
             language_button = CTkButton(
                 button_frame,
                 text=label,
                 height=46,
                 corner_radius=8,
                 anchor='w',
-                fg_color='#2e67d1' if is_detected else '#2b2e35',
-                hover_color='#3a78e5' if is_detected else '#3a3f49',
+                fg_color='#2b2e35',
+                hover_color='#3a3f49',
                 text_color='#ffffff',
-                font=('Microsoft YaHei UI', 18),
+                font=('SimSun', 18),
                 command=lambda name=locale.name: choose(name),
             )
             language_button.grid(row=row, column=0, sticky='ew', pady=(0, 10))
 
-        dialog.bind('<Escape>', lambda _event: choose(detected_locale_name))
-        dialog.bind('<Return>', lambda _event: choose(result['locale_name']))
-        dialog.protocol('WM_DELETE_WINDOW', lambda: choose(detected_locale_name))
-
-        dialog.deiconify()
-        dialog.lift()
-        dialog.focus_force()
-        dialog.grab_set()
-        self.wait_window(dialog)
+        overlay.bind('<Escape>', lambda _event: close_launcher())
+        overlay.focus_set()
+        self.wait_window(overlay)
 
         return result['locale_name']
+
+    def show_plain_text_dialog(self, title: str, message: str, confirm_text: str) -> bool:
+        if not self.exists:
+            return False
+
+        result = {'confirmed': False}
+        overlay = CTkFrame(self, fg_color='#102037', corner_radius=0)
+        overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        overlay.lift()
+
+        container = CTkFrame(
+            overlay,
+            width=760,
+            height=250,
+            fg_color='#1e2024',
+            border_color='#666b74',
+            border_width=2,
+            corner_radius=22,
+        )
+        container.place(relx=0.5, rely=0.5, anchor='center')
+        container.grid_propagate(False)
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_columnconfigure(1, weight=0)
+
+        def close_dialog():
+            if overlay.winfo_exists():
+                overlay.destroy()
+
+        def confirm():
+            result['confirmed'] = True
+            close_dialog()
+
+        CTkButton(
+            container,
+            text='×',
+            width=34,
+            height=34,
+            corner_radius=17,
+            fg_color='transparent',
+            hover_color='#343842',
+            text_color='#f1f3f5',
+            font=('SimHei', 28, 'bold'),
+            command=close_dialog,
+        ).grid(row=0, column=1, sticky='ne', padx=(8, 22), pady=(20, 0))
+
+        CTkLabel(
+            container,
+            text=str(title),
+            anchor='w',
+            text_color='#ffffff',
+            font=('SimHei', 26, 'bold'),
+        ).grid(row=0, column=0, sticky='ew', padx=(34, 8), pady=(28, 8))
+
+        CTkLabel(
+            container,
+            text=str(message),
+            anchor='w',
+            justify='left',
+            wraplength=684,
+            text_color='#f2f4f8',
+            font=('SimSun', 18),
+        ).grid(row=1, column=0, columnspan=2, sticky='ew', padx=34, pady=(8, 22))
+
+        CTkButton(
+            container,
+            text=str(confirm_text),
+            width=160,
+            height=42,
+            corner_radius=8,
+            fg_color='#f0f0f0',
+            hover_color='#ffffff',
+            text_color='#1e2024',
+            font=('SimSun', 18),
+            command=confirm,
+        ).grid(row=2, column=0, columnspan=2, sticky='e', padx=34, pady=(0, 26))
+
+        overlay.bind('<Escape>', lambda _event: close_dialog())
+        overlay.bind('<Return>', lambda _event: confirm())
+        overlay.focus_set()
+        self.wait_window(overlay)
+        return result['confirmed']
 
     def show_messagebox(self, event=None, **kwargs):
         if not self.exists:

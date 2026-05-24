@@ -384,11 +384,8 @@ class Application:
             if len(locales) <= 1:
                 return
 
-            active_locale_name = Locale.Locale.active_locale.name if Locale.Locale.active_locale is not None else ''
-            locales = sorted(locales, key=lambda item: item.name != active_locale_name)
             selected_locale_name = self.gui.show_startup_language_dialog(
                 locales=locales,
-                active_locale_name=active_locale_name,
             )
             selected_locale = next(
                 (locale for locale in locales if locale.name == selected_locale_name),
@@ -416,16 +413,18 @@ class Application:
 
         self.ensure_startup_language_configured()
 
-        self.gui.show_messagebox(Events.Application.ShowInfo(
-            modal=True,
+        prompt_accepted = self.gui.show_plain_text_dialog(
             title=L('message_title_gpmi_setup', 'GPMI Setup'),
             message=L('message_text_gpmi_select_exe_required', """
                 GPMI needs the exact Godot game executable before it can start.
                 
-                Please select the game .exe itself, not the game folder. The selected .exe path will be saved as the GPMI target.
+                Please select the game .exe itself, not the game folder.
             """),
             confirm_text=L('message_button_select_exe', 'Select .exe'),
-        ))
+        )
+        if not prompt_accepted:
+            Events.Fire(Events.Application.OpenSettings(tab_name='GENERAL_TAB'))
+            return
 
         try:
             from customtkinter import filedialog
@@ -434,7 +433,10 @@ class Application:
                 parent=self.gui,
                 initialdir=str(initial),
                 title=str(L('filedialog_title_select_gpmi_exe', 'Select Godot Game Executable')),
-                filetypes=[('Applications', '*.exe'), ('All files', '*.*')],
+                filetypes=[
+                    (str(L('general_settings_filetype_applications', 'Applications')), '*.exe'),
+                    (str(L('general_settings_filetype_all_files', 'All files')), '*.*'),
+                ],
             )
         except Exception as e:
             logging.exception(e)

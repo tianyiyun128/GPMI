@@ -214,7 +214,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             self.mods_panel,
             text=L('portrait_manager_import_page_title', '1. Import Mods'),
-            font=ctk.CTkFont(size=18, weight='bold'),
+            font=ctk.CTkFont(family='SimHei', size=18, weight='bold'),
         ).grid(
             row=0, column=0, sticky='w', padx=12, pady=(12, 4)
         )
@@ -286,7 +286,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             self.outfits_panel,
             text=L('portrait_manager_select_page_title', '2. Choose Active Mod'),
-            font=ctk.CTkFont(size=18, weight='bold'),
+            font=ctk.CTkFont(family='SimHei', size=18, weight='bold'),
         ).grid(
             row=0, column=0, columnspan=2, sticky='w', padx=12, pady=(12, 4)
         )
@@ -323,7 +323,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
     def _build_preview_panel(self, panel, title: str, title_attr: str, image_attr: str):
         panel.grid_columnconfigure(0, weight=1)
         panel.grid_rowconfigure(2, weight=1)
-        ctk.CTkLabel(panel, text=title, font=ctk.CTkFont(size=18, weight='bold')).grid(
+        ctk.CTkLabel(panel, text=title, font=ctk.CTkFont(family='SimHei', size=18, weight='bold')).grid(
             row=0, column=0, sticky='w', padx=12, pady=(12, 4)
         )
         title_label = ctk.CTkLabel(
@@ -369,7 +369,7 @@ class PortraitManagerWindow(ctk.CTkToplevel):
         status_frame = ctk.CTkFrame(self, fg_color='transparent')
         status_frame.grid(row=3, column=0, sticky='ew', padx=14, pady=(8, 14))
         status_frame.grid_columnconfigure(0, weight=1)
-        self.status_box = ctk.CTkTextbox(status_frame, height=110, font=ctk.CTkFont(family='Consolas', size=12))
+        self.status_box = ctk.CTkTextbox(status_frame, height=110, font=ctk.CTkFont(family='SimSun', size=12))
         self.status_box.grid(row=0, column=0, sticky='ew', padx=0, pady=0)
 
     def open_profile(self):

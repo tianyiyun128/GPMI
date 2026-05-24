@@ -45,7 +45,7 @@ class LanguageLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('launcher_settings_language_label', 'Language:'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             fg_color='transparent',
             master=master)
 
@@ -55,8 +55,8 @@ class LanguageOptionMenu(UIOptionMenu):
         super().__init__(
             width=120,
             height=36,
-            font=('Arial', 14),
-            dropdown_font=('Arial', 14),
+            font=('SimSun', 14),
+            dropdown_font=('SimSun', 14),
             values={l.name: l.display_name for l in Locale.get_indexed_locales()},
             variable=Vars.Launcher.locale,
             command=self.handle_language_change,
@@ -75,7 +75,7 @@ class GameFolderLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('general_settings_game_executable_label', 'Game Executable:'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             fg_color='transparent',
             master=master)
 
@@ -100,7 +100,7 @@ class GameFolderEntry(UIEntry):
             width=200,
             height=32,
             border_width=0,
-            font=('Arial', 14),
+            font=('SimSun', 14),
             master=master)
         self.normal_border_color = self._border_color
         self.error_label = error_label
@@ -131,7 +131,7 @@ class GameFolderErrorLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('general_settings_game_executable_not_configured', 'Game executable is not configured.'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             text_color='#ff3636',
             fg_color='transparent',
             master=master)
@@ -151,7 +151,7 @@ class ChangeGameFolderButton(UIButton):
             padx=6,
             height=32,
             border_width=0,
-            font=('Roboto', 14),
+            font=('SimSun', 14),
             fg_color=fg_color,
             hover_color=fg_color,
             text_color=['#000000', '#aaaaaa'],
@@ -199,7 +199,7 @@ class DetectGameFolderButton(UIButton):
             command=self.detect_game_folder,
             width=36,
             height=36,
-            font=('Asap', 18),
+            font=('SimSun', 18),
             master=master)
         self.set_tooltip(L(
             'general_settings_select_game_executable_tooltip',
@@ -223,7 +223,7 @@ class LaunchOptionsLabel(UILabel):
     def __init__(self, master):
         super().__init__(
             text=L('general_settings_launch_options_label', 'Launch Options:'),
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             fg_color='transparent',
             master=master)
 
@@ -264,7 +264,7 @@ class LaunchOptionsCheckbox(UICheckbox):
     def __init__(self, master):
         super().__init__(
             text='',
-            font=('Microsoft YaHei', 14, 'bold'),
+            font=('SimSun', 14, 'bold'),
             variable=Vars.Active.Importer.use_launch_options,
             width=36,
             master=master)
@@ -277,7 +277,7 @@ class LaunchOptionsEntry(UIEntry):
             width=100,
             height=32,
             border_width=0,
-            font=('Arial', 14),
+            font=('SimSun', 14),
             master=master)
         self.set_tooltip(self.get_tooltip)
         self.trace_write(Vars.Active.Importer.use_launch_options, self.handle_write_use_launch_options)
@@ -302,7 +302,7 @@ class LaunchOptionsButton(UIButton):
             padx=6,
             height=32,
             border_width=0,
-            font=('Roboto', 14),
+            font=('SimSun', 14),
             fg_color=fg_color,
             hover_color=fg_color,
             text_color=['#000000', '#aaaaaa'],

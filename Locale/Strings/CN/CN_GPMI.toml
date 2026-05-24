@@ -34,6 +34,54 @@ loc = "所有文件"
 src = "Select the exact Godot game executable. Automatic folder detection is disabled for GPMI."
 loc = "选择准确的 Godot 游戏 EXE。GPMI 已禁用自动文件夹检测。"
 
+[message_title_gpmi_setup]
+src = "GPMI Setup"
+loc = "GPMI 设置"
+
+[message_text_gpmi_select_exe_required]
+src = "GPMI needs the exact Godot game executable before it can start.\n\nPlease select the game .exe itself, not the game folder."
+loc = "GPMI 启动前需要指定准确的 Godot 游戏可执行文件。\n\n请选择游戏的 .exe 文件本身，而不是游戏文件夹。"
+
+[message_button_select_exe]
+src = "Select .exe"
+loc = "选择 .exe"
+
+[filedialog_title_select_gpmi_exe]
+src = "Select Godot Game Executable"
+loc = "选择 Godot 游戏 EXE"
+
+[message_title_invalid_gpmi_target]
+src = "Invalid GPMI Target"
+loc = "无效的 GPMI 目标"
+
+[message_text_invalid_gpmi_target]
+src = "Please select a valid .exe file. Folder paths are not accepted by GPMI."
+loc = "请选择有效的 .exe 文件。GPMI 不接受文件夹路径。"
+
+[gpmi_error_game_exe_not_configured]
+src = "Game executable is not configured. Select the exact Godot game .exe first."
+loc = "尚未配置游戏可执行文件。请先选择准确的 Godot 游戏 .exe。"
+
+[gpmi_error_game_exe_required]
+src = "GPMI requires an exact game executable path, not a folder. Click Browse and select the Godot game .exe."
+loc = "GPMI 需要准确的游戏可执行文件路径，而不是文件夹。请点击“浏览...”并选择 Godot 游戏 .exe。"
+
+[gpmi_error_game_exe_path_absolute]
+src = "Game executable path must be absolute: {path}"
+loc = "游戏可执行文件必须使用绝对路径：{path}"
+
+[gpmi_error_game_exe_not_found]
+src = "Game executable not found: {path}"
+loc = "未找到游戏可执行文件：{path}"
+
+[gpmi_error_configured_path_not_exe]
+src = "Configured game path is not an .exe: {path}"
+loc = "已配置的游戏路径不是 .exe：{path}"
+
+[gpmi_error_selected_game_exe_not_found]
+src = "Selected game executable not found: {path}"
+loc = "未找到已选择的游戏可执行文件：{path}"
+
 [general_settings_launch_options_label]
 src = "Launch Options:"
 loc = "启动参数："

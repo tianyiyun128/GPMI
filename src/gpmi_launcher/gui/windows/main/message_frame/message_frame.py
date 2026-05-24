@@ -162,7 +162,7 @@ class MessageTitleText(UIText):
         super().__init__(x=x,
                          y=y,
                          text=text,
-                         font=('Microsoft YaHei', 26, 'bold'),
+                         font=('SimHei', 26, 'bold'),
                          fill='white',
                          activefill='white',
                          anchor='nw',
@@ -186,7 +186,7 @@ class ConfirmButton(UIImageButton):
             # text_x_offset=36,
             text_y_offset=-1,
             text_anchor='center',
-            font=('Roboto', 20),
+            font=('SimSun', 20),
             # button_image_path='button-close-background.png',
             bg_normal_opacity=0.85,
             bg_hover_opacity=1,
@@ -221,7 +221,7 @@ class CancelButton(UIImageButton):
             # text_x_offset=36,
             text_y_offset=-1,
             text_anchor='center',
-            font=('Roboto', 20),
+            font=('SimSun', 20),
             # button_image_path='button-close-background.png',
             bg_normal_opacity=0.85,
             bg_hover_opacity=1,
@@ -409,16 +409,16 @@ class ContentFrame(UIScrollableFrame):
     def get_style(self):
         return dedent("""
             <style>
-                html { background-color: #1f2024;}
-                body { font-size: 18px; color: #ffffff}
-                p { font-family: Asap; margin: 10px 0px;}
-                ul { margin: 10px 0px;}
-                li { margin: 10px 0px;}
-                h1 { font-size: 18px; margin: 10px 0px;}
-                h2 { font-size: 16px; margin: 10px 0px;}
+                html { background-color: #1f2024; font-family: SimSun;}
+                body { font-family: SimSun; font-size: 18px; color: #ffffff}
+                p { font-family: SimSun; margin: 10px 0px;}
+                ul { font-family: SimSun; margin: 10px 0px;}
+                li { font-family: SimSun; margin: 10px 0px;}
+                h1 { font-family: SimHei; font-size: 18px; margin: 10px 0px;}
+                h2 { font-family: SimHei; font-size: 16px; margin: 10px 0px;}
                 a { color: #84adf3; text-decoration: none; }
                 a:hover { text-decoration: underline; }
-                label { cursor: pointer; padding: 0px; }
+                label { font-family: SimSun; cursor: pointer; padding: 0px; }
                 .red { color: #E57373; }
                 .orange { color: #FFB74D; }
                 .yellow { color: #FFD54F; }

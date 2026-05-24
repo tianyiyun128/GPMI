@@ -34,6 +34,54 @@ loc = "All files"
 src = "Select the exact Godot game executable. Automatic folder detection is disabled for GPMI."
 loc = "Select the exact Godot game executable. Automatic folder detection is disabled for GPMI."
 
+[message_title_gpmi_setup]
+src = "GPMI Setup"
+loc = "GPMI Setup"
+
+[message_text_gpmi_select_exe_required]
+src = "GPMI needs the exact Godot game executable before it can start.\n\nPlease select the game .exe itself, not the game folder."
+loc = "GPMI needs the exact Godot game executable before it can start.\n\nPlease select the game .exe itself, not the game folder."
+
+[message_button_select_exe]
+src = "Select .exe"
+loc = "Select .exe"
+
+[filedialog_title_select_gpmi_exe]
+src = "Select Godot Game Executable"
+loc = "Select Godot Game Executable"
+
+[message_title_invalid_gpmi_target]
+src = "Invalid GPMI Target"
+loc = "Invalid GPMI Target"
+
+[message_text_invalid_gpmi_target]
+src = "Please select a valid .exe file. Folder paths are not accepted by GPMI."
+loc = "Please select a valid .exe file. Folder paths are not accepted by GPMI."
+
+[gpmi_error_game_exe_not_configured]
+src = "Game executable is not configured. Select the exact Godot game .exe first."
+loc = "Game executable is not configured. Select the exact Godot game .exe first."
+
+[gpmi_error_game_exe_required]
+src = "GPMI requires an exact game executable path, not a folder. Click Browse and select the Godot game .exe."
+loc = "GPMI requires an exact game executable path, not a folder. Click Browse and select the Godot game .exe."
+
+[gpmi_error_game_exe_path_absolute]
+src = "Game executable path must be absolute: {path}"
+loc = "Game executable path must be absolute: {path}"
+
+[gpmi_error_game_exe_not_found]
+src = "Game executable not found: {path}"
+loc = "Game executable not found: {path}"
+
+[gpmi_error_configured_path_not_exe]
+src = "Configured game path is not an .exe: {path}"
+loc = "Configured game path is not an .exe: {path}"
+
+[gpmi_error_selected_game_exe_not_found]
+src = "Selected game executable not found: {path}"
+loc = "Selected game executable not found: {path}"
+
 [general_settings_launch_options_label]
 src = "Launch Options:"
 loc = "Launch Options:"
